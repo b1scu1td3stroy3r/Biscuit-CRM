@@ -345,7 +345,7 @@ export default function Dashboard() {
       await logAuditEvent(t, folderId, {
         timestamp: now,
         actor: senderName,
-        action: 'UPDATE_STAGE_AND_MILESTONE',
+        action: 'UPDATE_STAGE',
         entityId: `Contact_${contact.id}`,
         details: `Advanced stage to "${nextStage}" for ${contact.name} [${contact.accountNumber}]${
           milestoneConfig ? ` & auto-scheduled GCal delivery milestone "${milestoneConfig.title}"` : ''
