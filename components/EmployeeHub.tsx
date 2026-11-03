@@ -1,24 +1,15 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, 
+import { 
   Trophy, Award, Flame, UserCheck, Calendar, ArrowRightLeft, 
   StickyNote, Plus, Trash2, CheckCircle2, Clock, ShieldCheck, 
   Sparkles, Check, AlertCircle, Send, CalendarCheck2, Mail, ExternalLink,
-  XCircle, Crown
+  XCircle, Crown, X
 } from 'lucide-react';
-import { X, db, Contact, WhiteboardNote, LeaveRequest, EmployeeProfile, DepartmentRole, StaffHierarchyTier } from '../packages/storage/src/db';
-import { X, syncLeaveToGoogleCalendar, deleteCalendarEvent } from '../packages/storage/src/calendarSync';
+import { db, Contact, WhiteboardNote, LeaveRequest, EmployeeProfile, DepartmentRole, StaffHierarchyTier } from '../packages/storage/src/db';
+import { syncLeaveToGoogleCalendar, deleteCalendarEvent } from '../packages/storage/src/calendarSync';
 
-interface EmployeeHubProps {
-  currentRepName: string;
-  contacts: Contact[];
-  onRepNameChange: (newName: string) => void;
-  onAdvanceContactStage?: (contact: Contact) => void;
-  onAuthenticateGoogle?: () => Promise<string>;
-}
-
-const NOTE_COLORS = {
   amber: 'bg-amber-950/40 border-amber-500/30 text-amber-200',
   sky: 'bg-sky-950/40 border-sky-500/30 text-sky-200',
   emerald: 'bg-emerald-950/40 border-emerald-500/30 text-emerald-200',
