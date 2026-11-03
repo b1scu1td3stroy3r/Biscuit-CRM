@@ -4,10 +4,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   Trophy, Award, Flame, UserCheck, Calendar, ArrowRightLeft, 
   StickyNote, Plus, Trash2, CheckCircle2, Clock, ShieldCheck, 
-  Sparkles, Check, AlertCircle, Send, CalendarCheck2, Mail, ExternalLink
+  Sparkles, Check, AlertCircle, Send, CalendarCheck2, Mail, ExternalLink,
+  XCircle
 } from 'lucide-react';
 import { db, Contact, WhiteboardNote, LeaveRequest, EmployeeProfile } from '../packages/storage/src/db';
-import { syncLeaveToGoogleCalendar } from '../packages/storage/src/calendarSync';
+import { syncLeaveToGoogleCalendar, deleteCalendarEvent } from '../packages/storage/src/calendarSync';
 
 interface EmployeeHubProps {
   currentRepName: string;
@@ -33,7 +34,6 @@ export default function EmployeeHub({
 }: EmployeeHubProps) {
   const [activeTab, setActiveTab] = useState<'profile' | 'handover' | 'whiteboard' | 'leave'>('profile');
   
-  // Gamification & Profile State
   const [profile, setProfile] = useState<EmployeeProfile>({
     name: currentRepName || 'Sarah Jenkins',
     role: 'Senior Account Executive',
@@ -43,15 +43,14 @@ export default function EmployeeHub({
     handoverActive: false,
   });
 
-  // Whiteboard State
   const [notes, setNotes] = useState<WhiteboardNote[]>([]);
   const [newNoteText, setNewNoteText] = useState('');
   const [newNoteTitle, setNewNoteTitle] = useState('');
   const [selectedColor, setSelectedColor] = useState<'amber' | 'sky' | 'emerald' | 'purple' | 'rose'>('amber');
 
-  // Leave Requests State
   const [leaveList, setLeaveList] = useState<LeaveRequest[]>([]);
   const [isSubmittingLeave, setIsSubmittingLeave] = useState(false);
+  const [deletingLeaveId, setDeletingLeaveId] = useState<number | null>(null);
   const [newLeave, setNewLeave] = useState({
     type: 'Annual Leave' as const,
     startDate: '2026-12-24',
@@ -59,7 +58,6 @@ export default function EmployeeHub({
     notes: 'Christmas & Year End Break',
   });
 
-  // Handover State
   const [selectedContactForHandover, setSelectedContactForHandover] = useState<string>('');
   const [handoverCoverRep, setHandoverCoverRep] = useState('David Miller');
   const [handoverCoverEmail, setHandoverCoverEmail] = useState('david.miller@biscuitcrm.internal');
@@ -175,6 +173,27 @@ export default function EmployeeHub({
       await loadHubData();
     } finally {
       setIsSubmittingLeave(false);
+    }
+  };
+
+  const handleDeleteLeave = async (req: LeaveRequest) => {
+    if (!req.id) return;
+    setDeletingLeaveId(req.id);
+
+    try {
+      if (req.calendarEventId && onAuthenticateGoogle) {
+        try {
+          const token = await onAuthenticateGoogle();
+          await deleteCalendarEvent(token, req.calendarEventId);
+        } catch (calErr) {
+          console.warn('Google Calendar event deletion deferred:', calErr);
+        }
+      }
+
+      await db.leaveRequests.delete(req.id);
+      await loadHubData();
+    } finally {
+      setDeletingLeaveId(null);
     }
   };
 
@@ -346,7 +365,215 @@ export default function EmployeeHub({
         </button>
       </div>
 
-      {/* Tab: Handover Desk */}
+      {/* Tab: Annual Leave */}
+      {activeTab === 'leave' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="p-5 rounded-xl border border-slate-800 bg-slate-900/40 space-y-4">
+            <div>
+              <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-emerald-400" /> Book Annual Leave / OOO
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Automatically blocks out busy time on your Google Calendar
+              </p>
+            </div>
+
+            <form onSubmit={handleCreateLeave} className="space-y-3.5">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Leave Category</label>
+                <select
+                  value={newLeave.type}
+                  onChange={(e) => setNewLeave({ ...newLeave, type: e.target.value as any })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none"
+                >
+                  <option value="Annual Leave">Annual Holiday Leave</option>
+                  <option value="Sick Leave">Sick / Medical Leave</option>
+                  <option value="Compassionate">Compassionate Leave</option>
+                  <option value="Training">Training / Development</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] text-slate-400 block mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    value={newLeave.startDate}
+                    onChange={(e) => setNewLeave({ ...newLeave, startDate: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 font-mono"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-400 block mb-1">End Date</label>
+                  <input
+                    type="date"
+                    value={newLeave.endDate}
+                    onChange={(e) => setNewLeave({ ...newLeave, endDate: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 font-mono"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Purpose / Handover Coverage</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Year End Holiday (Covered by David)"
+                  value={newLeave.notes}
+                  onChange={(e) => setNewLeave({ ...newLeave, notes: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-400"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmittingLeave}
+                className="w-full inline-flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-semibold transition"
+              >
+                <CalendarCheck2 className="w-3.5 h-3.5" />
+                {isSubmittingLeave ? 'Syncing to Calendar...' : 'Submit & Sync to Calendar (+25 XP)'}
+              </button>
+            </form>
+          </div>
+
+          <div className="md:col-span-2 p-5 rounded-xl border border-slate-800 bg-slate-900/40 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+              <div>
+                <h3 className="font-bold text-slate-100 text-sm">UK Statutory Allowance Balance</h3>
+                <p className="text-xs text-slate-400 mt-0.5">28 Days Total Allowance &bull; {Math.max(0, 28 - totalLeaveTaken)} Days Remaining</p>
+              </div>
+              <span className="font-mono text-emerald-400 text-xs font-bold bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+                {totalLeaveTaken} / 28 Days Booked
+              </span>
+            </div>
+
+            <div className="space-y-2.5 max-h-64 overflow-y-auto">
+              {leaveList.map((req) => (
+                <div key={req.id} className="p-3.5 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-slate-200">{req.leaveType}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">({req.days} days)</span>
+                      {req.calendarEventId && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20">
+                          <CalendarCheck2 className="w-3 h-3" /> Synced to GCal
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                      {req.startDate} to {req.endDate} &bull; {req.notes || 'No description'}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      <CheckCircle2 className="w-3 h-3" /> {req.status}
+                    </span>
+
+                    <button
+                      onClick={() => handleDeleteLeave(req)}
+                      disabled={deletingLeaveId === req.id}
+                      className="p-1 rounded text-slate-500 hover:text-red-400 hover:bg-slate-800 transition"
+                      title="Cancel leave & remove from Google Calendar"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {leaveList.length === 0 && (
+                <div className="py-8 text-center border border-dashed border-slate-800 rounded-lg text-slate-500 text-xs">
+                  No annual leave requests recorded. Submit your first holiday booking above.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Whiteboard */}
+      {activeTab === 'whiteboard' && (
+        <div className="space-y-6">
+          <div className="p-5 rounded-xl border border-slate-800 bg-slate-900/60 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+            <div>
+              <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
+                <StickyNote className="w-4 h-4 text-amber-400" /> Operational Whiteboard & Ideas Canvas
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Leave announcements, sales objection tips, or strategy brainstorms for colleagues
+              </p>
+            </div>
+
+            <form onSubmit={handleCreateNote} className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+              <input
+                type="text"
+                placeholder="Sticky Title..."
+                value={newNoteTitle}
+                onChange={(e) => setNewNoteTitle(e.target.value)}
+                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400 w-36"
+                required
+              />
+              <input
+                type="text"
+                placeholder="Note content / tip..."
+                value={newNoteText}
+                onChange={(e) => setNewNoteText(e.target.value)}
+                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400 flex-1 md:w-64"
+                required
+              />
+              <select
+                value={selectedColor}
+                onChange={(e) => setSelectedColor(e.target.value as any)}
+                className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none"
+              >
+                <option value="amber">Amber</option>
+                <option value="sky">Sky Blue</option>
+                <option value="emerald">Emerald</option>
+                <option value="purple">Purple</option>
+                <option value="rose">Rose</option>
+              </select>
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold transition"
+              >
+                <Plus className="w-3.5 h-3.5" /> Post Sticky (+20 XP)
+              </button>
+            </form>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {notes.map((note) => (
+              <div 
+                key={note.id} 
+                className={`p-4 rounded-xl border transition shadow-lg flex flex-col justify-between min-h-[160px] ${NOTE_COLORS[note.color] || NOTE_COLORS.amber}`}
+              >
+                <div>
+                  <div className="flex items-center justify-between pb-2 border-b border-white/10 mb-2">
+                    <h4 className="font-bold text-xs uppercase tracking-wide">{note.title}</h4>
+                    <button
+                      onClick={() => handleDeleteNote(note.id)}
+                      className="opacity-60 hover:opacity-100 transition text-slate-300 hover:text-red-400"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <p className="text-xs leading-relaxed whitespace-pre-wrap">{note.content}</p>
+                </div>
+
+                <div className="flex items-center justify-between pt-3 border-t border-white/10 text-[10px] opacity-75 font-mono">
+                  <span>By {note.author}</span>
+                  <span>{note.createdAt?.slice(0, 10)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Handover */}
       {activeTab === 'handover' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/40 space-y-4">
@@ -477,202 +704,6 @@ export default function EmployeeHub({
                 Clicking <strong>Dispatch Gmail Memo</strong> auto-formats account nuances, stages, contact info, and instructions into a clean email draft ready to send to {handoverCoverRep}.
               </span>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tab: Annual Leave & Google Calendar OOO Sync */}
-      {activeTab === 'leave' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="p-5 rounded-xl border border-slate-800 bg-slate-900/40 space-y-4">
-            <div>
-              <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-emerald-400" /> Book Annual Leave / OOO
-              </h3>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                Automatically blocks out busy time on your Google Calendar
-              </p>
-            </div>
-
-            <form onSubmit={handleCreateLeave} className="space-y-3.5">
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">Leave Category</label>
-                <select
-                  value={newLeave.type}
-                  onChange={(e) => setNewLeave({ ...newLeave, type: e.target.value as any })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none"
-                >
-                  <option value="Annual Leave">Annual Holiday Leave</option>
-                  <option value="Sick Leave">Sick / Medical Leave</option>
-                  <option value="Compassionate">Compassionate Leave</option>
-                  <option value="Training">Training / Development</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11px] text-slate-400 block mb-1">Start Date</label>
-                  <input
-                    type="date"
-                    value={newLeave.startDate}
-                    onChange={(e) => setNewLeave({ ...newLeave, startDate: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 font-mono"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] text-slate-400 block mb-1">End Date</label>
-                  <input
-                    type="date"
-                    value={newLeave.endDate}
-                    onChange={(e) => setNewLeave({ ...newLeave, endDate: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 font-mono"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">Purpose / Handover Coverage</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Year End Holiday (Covered by David)"
-                  value={newLeave.notes}
-                  onChange={(e) => setNewLeave({ ...newLeave, notes: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-400"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSubmittingLeave}
-                className="w-full inline-flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-semibold transition"
-              >
-                <CalendarCheck2 className="w-3.5 h-3.5" />
-                {isSubmittingLeave ? 'Syncing to Calendar...' : 'Submit & Sync to Calendar (+25 XP)'}
-              </button>
-            </form>
-          </div>
-
-          <div className="md:col-span-2 p-5 rounded-xl border border-slate-800 bg-slate-900/40 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
-              <div>
-                <h3 className="font-bold text-slate-100 text-sm">UK Statutory Allowance Balance</h3>
-                <p className="text-xs text-slate-400 mt-0.5">28 Days Total Allowance &bull; {28 - totalLeaveTaken} Days Remaining</p>
-              </div>
-              <span className="font-mono text-emerald-400 text-xs font-bold bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-                {totalLeaveTaken} / 28 Days Booked
-              </span>
-            </div>
-
-            <div className="space-y-2.5 max-h-64 overflow-y-auto">
-              {leaveList.map((req) => (
-                <div key={req.id} className="p-3.5 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-slate-200">{req.leaveType}</span>
-                      <span className="text-[10px] text-slate-400 font-mono">({req.days} days)</span>
-                      {req.calendarEventId && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-mono text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20">
-                          <CalendarCheck2 className="w-3 h-3" /> Synced to GCal
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                      {req.startDate} to {req.endDate} &bull; {req.notes || 'No description'}
-                    </div>
-                  </div>
-                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                    <CheckCircle2 className="w-3 h-3" /> {req.status}
-                  </span>
-                </div>
-              ))}
-
-              {leaveList.length === 0 && (
-                <div className="py-8 text-center border border-dashed border-slate-800 rounded-lg text-slate-500 text-xs">
-                  No annual leave requests recorded. Submit your first holiday booking above.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tab: Whiteboard */}
-      {activeTab === 'whiteboard' && (
-        <div className="space-y-6">
-          <div className="p-5 rounded-xl border border-slate-800 bg-slate-900/60 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
-            <div>
-              <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
-                <StickyNote className="w-4 h-4 text-amber-400" /> Operational Whiteboard & Ideas Canvas
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Leave announcements, sales objection tips, or strategy brainstorms for colleagues
-              </p>
-            </div>
-
-            <form onSubmit={handleCreateNote} className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-              <input
-                type="text"
-                placeholder="Sticky Title..."
-                value={newNoteTitle}
-                onChange={(e) => setNewNoteTitle(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400 w-36"
-                required
-              />
-              <input
-                type="text"
-                placeholder="Note content / tip..."
-                value={newNoteText}
-                onChange={(e) => setNewNoteText(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400 flex-1 md:w-64"
-                required
-              />
-              <select
-                value={selectedColor}
-                onChange={(e) => setSelectedColor(e.target.value as any)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none"
-              >
-                <option value="amber">Amber</option>
-                <option value="sky">Sky Blue</option>
-                <option value="emerald">Emerald</option>
-                <option value="purple">Purple</option>
-                <option value="rose">Rose</option>
-              </select>
-              <button
-                type="submit"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold transition"
-              >
-                <Plus className="w-3.5 h-3.5" /> Post Sticky (+20 XP)
-              </button>
-            </form>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {notes.map((note) => (
-              <div 
-                key={note.id} 
-                className={`p-4 rounded-xl border transition shadow-lg flex flex-col justify-between min-h-[160px] ${NOTE_COLORS[note.color] || NOTE_COLORS.amber}`}
-              >
-                <div>
-                  <div className="flex items-center justify-between pb-2 border-b border-white/10 mb-2">
-                    <h4 className="font-bold text-xs uppercase tracking-wide">{note.title}</h4>
-                    <button
-                      onClick={() => handleDeleteNote(note.id)}
-                      className="opacity-60 hover:opacity-100 transition text-slate-300 hover:text-red-400"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <p className="text-xs leading-relaxed whitespace-pre-wrap">{note.content}</p>
-                </div>
-
-                <div className="flex items-center justify-between pt-3 border-t border-white/10 text-[10px] opacity-75 font-mono">
-                  <span>By {note.author}</span>
-                  <span>{note.createdAt?.slice(0, 10)}</span>
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       )}
