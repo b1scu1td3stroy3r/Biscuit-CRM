@@ -5,7 +5,7 @@ import {
   ShieldCheck, Zap, Database, Building2, Calendar as CalendarIcon, 
   FileText, CheckCircle2, Loader2, FolderCheck, Plus, Search, 
   RefreshCw, ExternalLink, ChevronRight, ArrowRight, LayoutGrid, List, Clock,
-  BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye
+  BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin
 } from 'lucide-react';
 import { db, Contact, ProjectTask, StoredTemplate } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
@@ -81,6 +81,9 @@ export default function Dashboard() {
     crn: '',
     email: '',
     phone: '',
+    accountManager: '',
+    billingAddress: '',
+    shippingAddress: '',
     stage: 'Lead' as StageType,
   });
 
@@ -296,6 +299,7 @@ export default function Dashboard() {
       ...newContact,
       company: item.title,
       crn: item.company_number,
+      billingAddress: item.address_snippet || '',
     });
     setSearchResults([]);
   };
@@ -330,7 +334,17 @@ export default function Dashboard() {
       });
     }).catch(console.warn);
 
-    setNewContact({ name: '', company: '', crn: '', email: '', phone: '', stage: 'Lead' });
+    setNewContact({ 
+      name: '', 
+      company: '', 
+      crn: '', 
+      email: '', 
+      phone: '', 
+      accountManager: '', 
+      billingAddress: '', 
+      shippingAddress: '', 
+      stage: 'Lead' 
+    });
     setIsModalOpen(false);
     await loadData();
   };
@@ -570,6 +584,13 @@ export default function Dashboard() {
                         </div>
                       )}
 
+                      {c.accountManager && (
+                        <div className="text-[10px] text-slate-400 flex items-center gap-1">
+                          <UserCheck className="w-3 h-3 text-amber-400" />
+                          <span>{c.accountManager}</span>
+                        </div>
+                      )}
+
                       <div className="text-[11px] text-slate-400 truncate">{c.email}</div>
 
                       <div className="pt-1 flex items-center justify-between border-t border-slate-800/60">
@@ -617,6 +638,7 @@ export default function Dashboard() {
               <tr>
                 <th className="px-6 py-3">Contact</th>
                 <th className="px-6 py-3">Company & CRN</th>
+                <th className="px-6 py-3">Account Manager</th>
                 <th className="px-6 py-3">Stage</th>
                 <th className="px-6 py-3">Sync Status</th>
                 <th className="px-6 py-3 text-right">Action</th>
@@ -636,6 +658,9 @@ export default function Dashboard() {
                   <td className="px-6 py-4">
                     <div>{c.company || '—'}</div>
                     {c.crn && <span className="text-xs font-mono text-sky-400">CRN: {c.crn}</span>}
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="text-xs text-slate-300">{c.accountManager || 'Unassigned'}</span>
                   </td>
                   <td className="px-6 py-4">
                     <span className="px-2.5 py-1 text-xs rounded-full bg-slate-800 text-amber-300 border border-slate-700">
@@ -834,6 +859,7 @@ export default function Dashboard() {
         isOpen={Boolean(selectedDealForDrawer)}
         onClose={() => setSelectedDealForDrawer(null)}
         onAdvanceStage={advanceStage}
+        onContactUpdated={loadData}
       />
 
       {/* Global Command Palette Component */}
@@ -854,10 +880,80 @@ export default function Dashboard() {
         folderId={folderId}
       />
 
-      {/* Modal: UK Companies House Lookup */}
-      {isModalOpen && (
+      {/* Modal: Create New Template */}
+      {isNewTemplateModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
+              <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-amber-400" /> Create Custom Battlecard / Template
+              </h3>
+              <button onClick={() => setIsNewTemplateModalOpen(false)} className="text-slate-400 hover:text-slate-200">✕</button>
+            </div>
+
+            <form onSubmit={handleSaveCustomTemplate} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Template Title</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Invoicing & Final Signoff"
+                  value={newTemplateForm.title}
+                  onChange={(e) => setNewTemplateForm({ ...newTemplateForm, title: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Email Subject Line</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Agreement documents for {{company}}"
+                  value={newTemplateForm.subject}
+                  onChange={(e) => setNewTemplateForm({ ...newTemplateForm, subject: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-slate-400">Template Body</label>
+                  <span className="text-[10px] text-slate-500 font-mono">Tokens: &#123;&#123;contact_name&#125;&#125;, &#123;&#123;company&#125;&#125;, &#123;&#123;crn&#125;&#125;, &#123;&#123;sender_name&#125;&#125;</span>
+                </div>
+                <textarea
+                  rows={6}
+                  placeholder="Hi {{contact_name}},&#10;&#10;Here are the details for {{company}}...&#10;&#10;Best,&#10;{{sender_name}}"
+                  value={newTemplateForm.body}
+                  onChange={(e) => setNewTemplateForm({ ...newTemplateForm, body: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-100 leading-relaxed"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsNewTemplateModalOpen(false)}
+                  className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm transition"
+                >
+                  Save to Vault
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: UK Companies House Lead Intake */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
               <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-sky-400" /> UK Companies House Lead Intake
@@ -904,19 +1000,18 @@ export default function Dashboard() {
               </div>
             )}
 
-            <form onSubmit={handleCreateContact} className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">Company Name</label>
-                <input
-                  type="text"
-                  value={newContact.company}
-                  onChange={(e) => setNewContact({ ...newContact, company: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
-                  required
-                />
-              </div>
-
+            <form onSubmit={handleCreateContact} className="space-y-3.5">
               <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Company Name</label>
+                  <input
+                    type="text"
+                    value={newContact.company}
+                    onChange={(e) => setNewContact({ ...newContact, company: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
+                    required
+                  />
+                </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-400 block mb-1">Company Number (CRN)</label>
                   <input
@@ -926,6 +1021,9 @@ export default function Dashboard() {
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-sky-400"
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-400 block mb-1">Contact Name</label>
                   <input
@@ -936,17 +1034,62 @@ export default function Dashboard() {
                     required
                   />
                 </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Account Manager</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Sarah Jenkins"
+                    value={newContact.accountManager}
+                    onChange={(e) => setNewContact({ ...newContact, accountManager: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">Email Address</label>
-                <input
-                  type="email"
-                  value={newContact.email}
-                  onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
-                  required
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    value={newContact.email}
+                    onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Phone Number</label>
+                  <input
+                    type="text"
+                    placeholder="+44 20 7946 0912"
+                    value={newContact.phone}
+                    onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-slate-100"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Billing Address</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Registered billing address"
+                    value={newContact.billingAddress}
+                    onChange={(e) => setNewContact({ ...newContact, billingAddress: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Shipping Address</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Physical fulfillment destination"
+                    value={newContact.shippingAddress}
+                    onChange={(e) => setNewContact({ ...newContact, shippingAddress: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100"
+                  />
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-3">
