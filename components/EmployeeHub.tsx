@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Trophy, Award, Flame, UserCheck, Calendar, ArrowRightLeft, 
   StickyNote, Plus, Trash2, CheckCircle2, Clock, ShieldCheck, 
-  Sparkles, Check, AlertCircle, Send, CalendarCheck2
+  Sparkles, Check, AlertCircle, Send, CalendarCheck2, Mail, ExternalLink
 } from 'lucide-react';
 import { db, Contact, WhiteboardNote, LeaveRequest, EmployeeProfile } from '../packages/storage/src/db';
 import { syncLeaveToGoogleCalendar } from '../packages/storage/src/calendarSync';
@@ -37,7 +37,7 @@ export default function EmployeeHub({
   const [profile, setProfile] = useState<EmployeeProfile>({
     name: currentRepName || 'Sarah Jenkins',
     role: 'Senior Account Executive',
-    xp: 520,
+    xp: 560,
     level: 3,
     dealsClosed: 4,
     handoverActive: false,
@@ -62,8 +62,10 @@ export default function EmployeeHub({
   // Handover State
   const [selectedContactForHandover, setSelectedContactForHandover] = useState<string>('');
   const [handoverCoverRep, setHandoverCoverRep] = useState('David Miller');
+  const [handoverCoverEmail, setHandoverCoverEmail] = useState('david.miller@biscuitcrm.internal');
   const [handoverNotes, setHandoverNotes] = useState('');
   const [handoverSuccess, setHandoverSuccess] = useState(false);
+  const [lastTransferredContact, setLastTransferredContact] = useState<Contact | null>(null);
 
   const loadHubData = async () => {
     try {
@@ -81,7 +83,7 @@ export default function EmployeeHub({
         const initial = {
           name: currentRepName,
           role: 'Senior Account Executive',
-          xp: 520,
+          xp: 560,
           level: 3,
           dealsClosed: contacts.filter(c => c.stage === 'Customer Service').length,
           handoverActive: false,
@@ -142,7 +144,6 @@ export default function EmployeeHub({
 
       let calId: string | undefined;
 
-      // Automatically sync OOO all-day block to Google Calendar
       if (onAuthenticateGoogle) {
         try {
           const token = await onAuthenticateGoogle();
@@ -154,7 +155,7 @@ export default function EmployeeHub({
             notes: newLeave.notes,
           });
         } catch (calErr) {
-          console.warn('Google Calendar sync skipped or deferred:', calErr);
+          console.warn('Google Calendar sync deferred:', calErr);
         }
       }
 
@@ -204,11 +205,36 @@ export default function EmployeeHub({
         timestamp: Date.now(),
       });
 
+      setLastTransferredContact(targetContact);
       setHandoverSuccess(true);
       await addXP(35, 'Delegated Deal Handover');
-      setTimeout(() => setHandoverSuccess(false), 3000);
-      setHandoverNotes('');
+      setTimeout(() => setHandoverSuccess(false), 5000);
     }
+  };
+
+  const handleOpenHandoverEmail = () => {
+    if (!lastTransferredContact && !selectedContactForHandover) return;
+    const target = lastTransferredContact || contacts.find(c => c.accountNumber === selectedContactForHandover);
+    if (!target) return;
+
+    const subject = encodeURIComponent(`[DEAL HANDOVER] ${target.name} (${target.company || 'Retail'}) [Ref: ${target.accountNumber}]`);
+    const body = encodeURIComponent(
+      `Hi ${handoverCoverRep},\n\n` +
+      `I have transferred account coverage for ${target.name} to you while I am out of office.\n\n` +
+      `ACCOUNT DETAILS:\n` +
+      `• Account No: ${target.accountNumber}\n` +
+      `• Company: ${target.company || 'Private Client'}${target.crn ? ` (CRN: ${target.crn})` : ''}\n` +
+      `• Current Pipeline Stage: ${target.stage}\n` +
+      `• Contact Email: ${target.email}\n` +
+      `• Contact Phone: ${target.phone || 'None provided'}\n\n` +
+      `HANDOVER INSTRUCTIONS & NUANCES:\n` +
+      `${handoverNotes || 'Please monitor communications and address urgent requirements as per standard SLA.'}\n\n` +
+      `The master ledger has already been updated with your coverage.\n\n` +
+      `Best regards,\n` +
+      `${currentRepName}`
+    );
+
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(handoverCoverEmail)}&su=${subject}&body=${body}`, '_blank');
   };
 
   const getRank = (lvl: number) => {
@@ -319,6 +345,141 @@ export default function EmployeeHub({
           <Calendar className="w-4 h-4" /> Annual Leave Tracker
         </button>
       </div>
+
+      {/* Tab: Handover Desk */}
+      {activeTab === 'handover' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/40 space-y-4">
+            <div>
+              <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
+                <ArrowRightLeft className="w-4 h-4 text-amber-400" /> Delegate Account & Out-of-Office Handover
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Reassign deals to a covering colleague and automatically dispatch complete context briefings
+              </p>
+            </div>
+
+            <form onSubmit={handleExecuteHandover} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Select Customer Account</label>
+                <select
+                  value={selectedContactForHandover}
+                  onChange={(e) => setSelectedContactForHandover(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
+                  required
+                >
+                  <option value="">-- Choose account to delegate --</option>
+                  {contacts.map((c) => (
+                    <option key={c.id} value={c.accountNumber}>
+                      [{c.accountNumber}] {c.name} - {c.company || 'Retail'} ({c.stage})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Covering Rep Name</label>
+                  <input
+                    type="text"
+                    value={handoverCoverRep}
+                    onChange={(e) => setHandoverCoverRep(e.target.value)}
+                    placeholder="e.g. David Miller"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Covering Rep Email</label>
+                  <input
+                    type="email"
+                    value={handoverCoverEmail}
+                    onChange={(e) => setHandoverCoverEmail(e.target.value)}
+                    placeholder="colleague@domain.com"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Handover Brief & Special Instructions</label>
+                <textarea
+                  rows={4}
+                  value={handoverNotes}
+                  onChange={(e) => setHandoverNotes(e.target.value)}
+                  placeholder="Key nuances: e.g. Client requested procurement follow up on Thursday regarding pricing..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
+                  required
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="flex-1 inline-flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold transition"
+                >
+                  {handoverSuccess ? (
+                    <>
+                      <Check className="w-4 h-4 text-slate-950" /> Transfer Recorded (+35 XP)
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" /> Transfer Account Coverage
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenHandoverEmail}
+                  className="inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition shadow-md shadow-indigo-600/20"
+                  title="Prepare email brief in Gmail"
+                >
+                  <Mail className="w-3.5 h-3.5" /> Dispatch Gmail Memo
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/40 space-y-4 flex flex-col justify-between">
+            <div>
+              <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" /> Active Managed Accounts
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Accounts currently under management:
+              </p>
+              
+              <div className="mt-4 space-y-2 max-h-72 overflow-y-auto">
+                {contacts.map((c) => (
+                  <div key={c.id} className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-semibold text-slate-200">{c.name}</div>
+                      <div className="text-[10px] text-slate-400">
+                        {c.company || 'Retail'} &bull; <span className="text-emerald-400 font-mono">{c.accountNumber}</span>
+                        {c.accountManager && (
+                          <span className="text-amber-400 ml-1.5 font-sans">({c.accountManager})</span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/30">
+                      {c.stage}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300 flex items-start gap-2">
+              <Mail className="w-4 h-4 shrink-0 text-indigo-400 mt-0.5" />
+              <span>
+                Clicking <strong>Dispatch Gmail Memo</strong> auto-formats account nuances, stages, contact info, and instructions into a clean email draft ready to send to {handoverCoverRep}.
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tab: Annual Leave & Google Calendar OOO Sync */}
       {activeTab === 'leave' && (
@@ -516,112 +677,7 @@ export default function EmployeeHub({
         </div>
       )}
 
-      {/* Tab: Handover */}
-      {activeTab === 'handover' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/40 space-y-4">
-            <div>
-              <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
-                <ArrowRightLeft className="w-4 h-4 text-amber-400" /> Delegate Account & Out-of-Office Handover
-              </h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Reassign deals to a covering colleague while on leave with full context logs attached
-              </p>
-            </div>
-
-            <form onSubmit={handleExecuteHandover} className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">Select Customer Account</label>
-                <select
-                  value={selectedContactForHandover}
-                  onChange={(e) => setSelectedContactForHandover(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
-                  required
-                >
-                  <option value="">-- Choose account to delegate --</option>
-                  {contacts.map((c) => (
-                    <option key={c.id} value={c.accountNumber}>
-                      [{c.accountNumber}] {c.name} - {c.company} ({c.stage})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">Covering Representative</label>
-                <input
-                  type="text"
-                  value={handoverCoverRep}
-                  onChange={(e) => setHandoverCoverRep(e.target.value)}
-                  placeholder="e.g. David Miller"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">Handover Brief & Special Instructions</label>
-                <textarea
-                  rows={4}
-                  value={handoverNotes}
-                  onChange={(e) => setHandoverNotes(e.target.value)}
-                  placeholder="Key nuances: e.g. Client requested procurement follow up on Thursday regarding pricing..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
-                  required
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full inline-flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold transition"
-              >
-                {handoverSuccess ? (
-                  <>
-                    <Check className="w-4 h-4 text-slate-950" /> Handover Assigned & Synced! (+35 XP)
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" /> Transfer Account Coverage
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
-
-          <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/40 space-y-4 flex flex-col justify-between">
-            <div>
-              <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" /> Active Managed Accounts
-              </h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Accounts currently assigned to {currentRepName}:
-              </p>
-              
-              <div className="mt-4 space-y-2 max-h-72 overflow-y-auto">
-                {contacts
-                  .filter(c => !c.accountManager || c.accountManager.includes(currentRepName))
-                  .map((c) => (
-                    <div key={c.id} className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-semibold text-slate-200">{c.name}</div>
-                        <div className="text-[10px] text-slate-400">{c.company} &bull; <span className="text-emerald-400 font-mono">{c.accountNumber}</span></div>
-                      </div>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/30">
-                        {c.stage}
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
-              Handing over an account automatically updates the Google Drive Master ledger with the covering rep&apos;s name and logs instructions into confidential notes.
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tab: Performance */}
+      {/* Tab: Profile */}
       {activeTab === 'profile' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="p-5 rounded-xl border border-slate-800 bg-slate-900/40 space-y-3">
