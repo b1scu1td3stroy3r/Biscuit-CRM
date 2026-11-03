@@ -1,46 +1,43 @@
 import { db } from './db';
 
 const STORAGE_KEY_SHEET_ID = 'biscuit_crm_pipeline_sheet_id';
+const DEFAULT_MASTER_SHEET_ID = '14BchRnN5ah4Q6opNG3wvmaAbZ15XgjTc-Nw58AuKQl';
 
 export async function pullContactsFromGoogleSheet(accessToken: string, folderId: string) {
-  let sheetId = localStorage.getItem(STORAGE_KEY_SHEET_ID);
+  let sheetId = localStorage.getItem(STORAGE_KEY_SHEET_ID) || DEFAULT_MASTER_SHEET_ID;
 
-  // If not yet stored on this origin, prompt once for the existing Sheet ID or query Drive
-  if (!sheetId) {
-    try {
-      const query = encodeURIComponent(`name = 'Biscuit_CRM_Pipeline_Master' and trashed = false`);
-      const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      const searchData = await searchRes.json();
-      if (searchData.files && searchData.files.length > 0) {
-        sheetId = searchData.files[0].id;
-      }
-    } catch (e) {
-      console.warn('Drive search restricted:', e);
-    }
+  // 1. Fetch metadata to get the actual name of the first sheet tab
+  let metaRes = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets.properties.title`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
 
-    if (!sheetId) {
-      const manualId = window.prompt(
-        'Paste your Biscuit_CRM_Pipeline_Master Google Sheet ID (from the sheet URL between /d/ and /edit):'
-      );
-      if (!manualId || !manualId.trim()) {
-        return { importedCount: 0, sheetId: null };
-      }
-      sheetId = manualId.trim();
-    }
-    localStorage.setItem(STORAGE_KEY_SHEET_ID, sheetId as string);
+  // If 404/403 with cached sheetId, fallback to DEFAULT_MASTER_SHEET_ID
+  if (!metaRes.ok && sheetId !== DEFAULT_MASTER_SHEET_ID) {
+    sheetId = DEFAULT_MASTER_SHEET_ID;
+    metaRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets.properties.title`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
   }
 
+  if (!metaRes.ok) {
+    const err = await metaRes.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Failed to access spreadsheet (Status: ${metaRes.status})`);
+  }
+
+  const metaData = await metaRes.json();
+  const firstSheetTitle = metaData.sheets?.[0]?.properties?.title || 'Sheet1';
+
+  // 2. Read rows from row 2 onwards using the discovered tab name
   const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Contacts!A2:H?majorDimension=ROWS`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(firstSheetTitle)}!A2:H?majorDimension=ROWS`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 
   if (!res.ok) {
-    // If the ID was invalid or expired from storage, clear it so user can re-enter
-    localStorage.removeItem(STORAGE_KEY_SHEET_ID);
-    throw new Error('Failed to fetch rows from spreadsheet. Check ID or permissions.');
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Failed to read rows from sheet "${firstSheetTitle}"`);
   }
 
   const data = await res.json();
@@ -48,7 +45,7 @@ export async function pullContactsFromGoogleSheet(accessToken: string, folderId:
   let importedCount = 0;
 
   for (const r of rows) {
-    if (!r[1]) continue;
+    if (!r[1]) continue; // Skip empty rows
     const email = r[4] || '';
     const existing = await db.contacts.where('email').equals(email).first();
     if (!existing) {
@@ -66,7 +63,8 @@ export async function pullContactsFromGoogleSheet(accessToken: string, folderId:
     }
   }
 
-  return { importedCount, sheetId };
+  localStorage.setItem(STORAGE_KEY_SHEET_ID, sheetId);
+  return { importedCount, sheetId, totalRows: rows.length };
 }
 
 export async function syncOutboxToGoogleSheets(accessToken: string, folderId?: string) {
@@ -77,9 +75,20 @@ export async function syncOutboxToGoogleSheets(accessToken: string, folderId?: s
     return { syncedCount: 0, sheetId: null };
   }
 
-  let sheetId = localStorage.getItem(STORAGE_KEY_SHEET_ID);
+  let sheetId = localStorage.getItem(STORAGE_KEY_SHEET_ID) || DEFAULT_MASTER_SHEET_ID;
 
-  if (!sheetId) {
+  // Verify sheet exists or fetch its active tab
+  let metaRes = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets.properties.title`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+
+  let sheetTitle = 'Sheet1';
+  if (metaRes.ok) {
+    const metaData = await metaRes.json();
+    sheetTitle = metaData.sheets?.[0]?.properties?.title || 'Sheet1';
+  } else {
+    // If not found, create one
     const createRes = await fetch('https://sheets.googleapis.com/v4/spreadsheets', {
       method: 'POST',
       headers: {
@@ -88,7 +97,7 @@ export async function syncOutboxToGoogleSheets(accessToken: string, folderId?: s
       },
       body: JSON.stringify({
         properties: { title: 'Biscuit_CRM_Pipeline_Master' },
-        sheets: [{ properties: { title: 'Contacts', gridProperties: { rowCount: 100, columnCount: 10 } } }],
+        sheets: [{ properties: { title: 'Sheet1', gridProperties: { rowCount: 100, columnCount: 10 } } }],
       }),
     });
 
@@ -99,6 +108,7 @@ export async function syncOutboxToGoogleSheets(accessToken: string, folderId?: s
 
     const createdSheet = await createRes.json();
     sheetId = createdSheet.spreadsheetId;
+    sheetTitle = 'Sheet1';
     localStorage.setItem(STORAGE_KEY_SHEET_ID, sheetId as string);
 
     if (folderId && sheetId) {
@@ -128,7 +138,7 @@ export async function syncOutboxToGoogleSheets(accessToken: string, folderId?: s
   ];
 
   const updateRes = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Contacts!A1?valueInputOption=USER_ENTERED`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetTitle)}!A1?valueInputOption=USER_ENTERED`,
     {
       method: 'PUT',
       headers: {
@@ -136,7 +146,7 @@ export async function syncOutboxToGoogleSheets(accessToken: string, folderId?: s
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        range: 'Contacts!A1',
+        range: `${sheetTitle}!A1`,
         majorDimension: 'ROWS',
         values: rows,
       }),
