@@ -4,9 +4,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   ShieldCheck, Zap, Database, Building2, Calendar as CalendarIcon, 
   FileText, CheckCircle2, Loader2, FolderCheck, Plus, Search, 
-  RefreshCw, ExternalLink, ChevronRight, ArrowRight, LayoutGrid, List, Clock,
+  RefreshCw, ExternalLink, ChevronRight, ChevronLeft, ArrowRight, LayoutGrid, List, Clock,
   BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin,
-  Cloud, CloudOff, Hash, Users, Download, FileSpreadsheet
+  Cloud, CloudOff, Hash, Users, Download, FileSpreadsheet, AlertTriangle
 } from 'lucide-react';
 import { db, Contact, ProjectTask, StoredTemplate, AuditRecord } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
@@ -92,6 +92,18 @@ export default function Dashboard() {
   const [selectedDealForDrawer, setSelectedDealForDrawer] = useState<Contact | null>(null);
 
   const [senderName, setSenderName] = useState<string>('Sarah Jenkins');
+  const [supervisorEmail, setSupervisorEmail] = useState<string>('sales.lead@biscuitcrm.internal');
+
+  // Deal Regression / Move Backwards State
+  const [regressingContact, setRegressingContact] = useState<Contact | null>(null);
+  const [regressionReasonCategory, setRegressionReasonCategory] = useState<string>('Client Requested Timeline Postponement');
+  const [regressionNotes, setRegressionNotes] = useState<string>('');
+  const [isRegressing, setIsRegressing] = useState(false);
+  const [postRegressionDraft, setPostRegressionDraft] = useState<{
+    subject: string;
+    body: string;
+    recipient: string;
+  } | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -163,6 +175,9 @@ export default function Dashboard() {
 
     const savedSender = localStorage.getItem('biscuit_crm_sender_name');
     if (savedSender) setSenderName(savedSender);
+
+    const savedSupervisor = localStorage.getItem('biscuit_crm_supervisor_email');
+    if (savedSupervisor) setSupervisorEmail(savedSupervisor);
 
     if (contactList.length > 0 && !selectedContactForTemplate) {
       setSelectedContactForTemplate(contactList[0]);
@@ -363,6 +378,106 @@ export default function Dashboard() {
       setSelectedDealForDrawer({ ...contact, stage: nextStage, updatedAt: now });
     }
     triggerDebouncedSync();
+  };
+
+  // Open Backward Regression Modal
+  const initiateStageRegression = (contact: Contact) => {
+    setRegressingContact(contact);
+    setRegressionReasonCategory('Client Requested Timeline Postponement');
+    setRegressionNotes('');
+    setPostRegressionDraft(null);
+  };
+
+  // Execute Backward Stage Move + Audit Stamping + Email Prep
+  const handleConfirmRegression = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!regressingContact || !regressingContact.id) return;
+    setIsRegressing(true);
+
+    try {
+      const currentIndex = PIPELINE_STAGES.findIndex(s => s.key === regressingContact.stage);
+      if (currentIndex <= 0) return;
+
+      const previousStage = PIPELINE_STAGES[currentIndex - 1].key;
+      const now = new Date().toISOString();
+      const dateStr = now.slice(0, 10);
+
+      const regressionEntry = `\n[DEAL REGRESSION ${dateStr}]: Stage reverted from ${regressingContact.stage} back to ${previousStage} by ${senderName}.\nReason Category: ${regressionReasonCategory}\nExplanation: ${regressionNotes}`;
+      const updatedInternalNotes = `${regressingContact.internalNotes || ''}${regressionEntry}`;
+
+      await db.contacts.update(regressingContact.id, {
+        stage: previousStage,
+        internalNotes: updatedInternalNotes,
+        synced: false,
+        updatedAt: now,
+      });
+
+      await db.outbox.add({
+        type: 'UPDATE',
+        table: 'contacts',
+        payload: {
+          id: regressingContact.id,
+          stage: previousStage,
+          internalNotes: updatedInternalNotes,
+          updatedAt: now,
+        },
+        timestamp: Date.now(),
+      });
+
+      // Prepare Notification Email Draft for Supervisor & Account Manager
+      const assignedRep = regressingContact.accountManager || senderName;
+      const emailSubject = `[URGENT DEAL REGRESSION] ${regressingContact.name} (${regressingContact.company || 'Retail'}) [Ref: ${regressingContact.accountNumber}]`;
+      const emailBody = 
+        `ATTENTION: DEAL REGRESSION NOTIFICATION\n\n` +
+        `This is an automated operational alert. The following customer deal has been moved backwards in the pipeline.\n\n` +
+        `CUSTOMER RECORD:\n` +
+        `• Account Reference: ${regressingContact.accountNumber}\n` +
+        `• Customer Name: ${regressingContact.name}\n` +
+        `• Company: ${regressingContact.company || 'Private'}${regressingContact.crn ? ` (CRN: ${regressingContact.crn})` : ''}\n` +
+        `• Previous Stage: ${regressingContact.stage}\n` +
+        `• Reverted Stage: ${previousStage}\n` +
+        `• Assigned Manager: ${assignedRep}\n` +
+        `• Regression Initiated By: ${senderName}\n\n` +
+        `REASON CATEGORY:\n` +
+        `${regressionReasonCategory}\n\n` +
+        `DETAILED EXPLANATION:\n` +
+        `${regressionNotes}\n\n` +
+        `The master ledger on Google Drive and local audit logs have recorded this regression.\n` +
+        `Please review the account notes and re-engage if necessary.`;
+
+      setPostRegressionDraft({
+        subject: emailSubject,
+        body: emailBody,
+        recipient: `${supervisorEmail}`,
+      });
+
+      authenticateToken().then(async (t) => {
+        await logAuditEvent(t, folderId, {
+          timestamp: now,
+          actor: senderName,
+          action: 'UPDATE_STAGE',
+          entityId: `Contact_${regressingContact.id}`,
+          details: `Reverted stage backward from "${regressingContact.stage}" to "${previousStage}" for ${regressingContact.name} [${regressingContact.accountNumber}]. Reason: ${regressionReasonCategory} - ${regressionNotes}`,
+        });
+        const cachedAudit = localStorage.getItem('biscuit_crm_audit_sheet_id');
+        if (cachedAudit) setAuditSheetId(cachedAudit);
+      }).catch(console.warn);
+
+      await loadData();
+      triggerDebouncedSync();
+    } finally {
+      setIsRegressing(false);
+    }
+  };
+
+  const handleDispatchRegressionAlert = () => {
+    if (!postRegressionDraft) return;
+    const recipient = encodeURIComponent(postRegressionDraft.recipient);
+    const subject = encodeURIComponent(postRegressionDraft.subject);
+    const body = encodeURIComponent(postRegressionDraft.body);
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${recipient}&su=${subject}&body=${body}`, '_blank');
+    setRegressingContact(null);
+    setPostRegressionDraft(null);
   };
 
   const handleCreateTask = async (e: React.FormEvent) => {
@@ -678,7 +793,6 @@ export default function Dashboard() {
             </a>
           )}
 
-          {/* Direct CSV Audit Trail Export */}
           <button
             onClick={() => exportAuditLogsToCSV(auditLogs)}
             disabled={auditLogs.length === 0}
@@ -729,11 +843,12 @@ export default function Dashboard() {
         />
       )}
 
-      {/* View 2: Kanban Pipeline */}
+      {/* View 2: Kanban Pipeline with Backward & Forward Controls */}
       {viewMode === 'kanban' && (
         <section className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
           {PIPELINE_STAGES.map((col, idx) => {
             const colContacts = contacts.filter(c => c.stage === col.key);
+            const isFirstCol = idx === 0;
             const isLastCol = idx === PIPELINE_STAGES.length - 1;
 
             return (
@@ -793,18 +908,35 @@ export default function Dashboard() {
                         </span>
                       </div>
 
-                      {!isLastCol && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            advanceStage(c);
-                          }}
-                          className="w-full mt-1 inline-flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700/60 transition group-hover:border-amber-500/40"
-                        >
-                          <span>Move Next</span>
-                          <ChevronRight className="w-3.5 h-3.5 text-amber-400" />
-                        </button>
-                      )}
+                      {/* Directional Controls: Move Backward (if > stage 1) & Move Forward */}
+                      <div className="flex items-center gap-1.5 pt-1">
+                        {!isFirstCol && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              initiateStageRegression(c);
+                            }}
+                            className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-medium py-1.5 px-2 bg-slate-800 hover:bg-rose-950/50 hover:text-rose-300 text-slate-400 rounded border border-slate-700/60 hover:border-rose-500/40 transition"
+                            title="Revert deal backward due to delay or cold interest"
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5 text-rose-400" />
+                            <span>Revert</span>
+                          </button>
+                        )}
+
+                        {!isLastCol && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              advanceStage(c);
+                            }}
+                            className={`${isFirstCol ? 'w-full' : 'flex-1'} inline-flex items-center justify-center gap-1 text-[11px] font-medium py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700/60 hover:border-amber-500/40 transition`}
+                          >
+                            <span>Move Next</span>
+                            <ChevronRight className="w-3.5 h-3.5 text-amber-400" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
 
@@ -820,7 +952,7 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* View 3: Table View with Direct Pipeline CSV Export */}
+      {/* View 3: Table View */}
       {viewMode === 'table' && (
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
@@ -849,60 +981,74 @@ export default function Dashboard() {
                 <th className="px-6 py-3">Account Manager</th>
                 <th className="px-6 py-3">Stage</th>
                 <th className="px-6 py-3">Sync Status</th>
-                <th className="px-6 py-3 text-right">Action</th>
+                <th className="px-6 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
-              {contacts.map((c) => (
-                <tr 
-                  key={c.id} 
-                  onClick={() => setSelectedDealForDrawer(c)}
-                  className="hover:bg-slate-800/30 cursor-pointer"
-                >
-                  <td className="px-6 py-4 font-mono text-emerald-400 font-semibold text-xs">
-                    {c.accountNumber}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="font-semibold text-slate-100 hover:text-amber-400">{c.name}</div>
-                    <div className="text-xs text-slate-400">{c.email}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div>{c.company || '—'}</div>
-                    {c.crn && <span className="text-xs font-mono text-slate-400">CRN: {c.crn}</span>}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-xs text-slate-300">{c.accountManager || 'Unassigned'}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="px-2.5 py-1 text-xs rounded-full bg-slate-800 text-amber-300 border border-slate-700">
-                      {c.stage}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    {c.synced ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Synced
+              {contacts.map((c) => {
+                const isFirstCol = c.stage === 'Lead';
+                return (
+                  <tr 
+                    key={c.id} 
+                    onClick={() => setSelectedDealForDrawer(c)}
+                    className="hover:bg-slate-800/30 cursor-pointer"
+                  >
+                    <td className="px-6 py-4 font-mono text-emerald-400 font-semibold text-xs">
+                      {c.accountNumber}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="font-semibold text-slate-100 hover:text-amber-400">{c.name}</div>
+                      <div className="text-xs text-slate-400">{c.email}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div>{c.company || '—'}</div>
+                      {c.crn && <span className="text-xs font-mono text-slate-400">CRN: {c.crn}</span>}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-xs text-slate-300">{c.accountManager || 'Unassigned'}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="px-2.5 py-1 text-xs rounded-full bg-slate-800 text-amber-300 border border-slate-700">
+                        {c.stage}
                       </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-amber-400 font-medium">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
-                        Outbox Queued
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        advanceStage(c);
-                      }}
-                      className="inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300"
-                    >
-                      Advance Stage <ArrowRight className="w-3 h-3" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-6 py-4">
+                      {c.synced ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Synced
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-amber-400 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+                          Outbox Queued
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-right space-x-2">
+                      {!isFirstCol && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            initiateStageRegression(c);
+                          }}
+                          className="inline-flex items-center gap-1 text-xs text-rose-400 hover:text-rose-300"
+                        >
+                          <ChevronLeft className="w-3 h-3" /> Revert
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          advanceStage(c);
+                        }}
+                        className="inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300"
+                      >
+                        Advance <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </section>
@@ -1063,6 +1209,138 @@ export default function Dashboard() {
             })}
           </div>
         </section>
+      )}
+
+      {/* Mandatory Deal Regression & Stakeholder Escalation Modal */}
+      {regressingContact && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-100 text-base">Revert Deal Pipeline Stage</h3>
+                  <p className="text-xs text-slate-400">
+                    Account: <span className="text-emerald-400 font-mono font-semibold">{regressingContact.accountNumber}</span> &bull; {regressingContact.name} ({regressingContact.company || 'Retail'})
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setRegressingContact(null);
+                  setPostRegressionDraft(null);
+                }} 
+                className="text-slate-400 hover:text-slate-200"
+              >✕</button>
+            </div>
+
+            {!postRegressionDraft ? (
+              <form onSubmit={handleConfirmRegression} className="space-y-4">
+                <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-300 leading-relaxed">
+                  You are moving this deal backward from <strong>{regressingContact.stage}</strong>. Company policy requires an explanation and will prepare an escalation notification to the account manager and supervisor.
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">
+                    Primary Reason for Delay / Cold Interest
+                  </label>
+                  <select
+                    value={regressionReasonCategory}
+                    onChange={(e) => setRegressionReasonCategory(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-rose-400"
+                  >
+                    <option value="Client Requested Timeline Postponement">Client Requested Timeline Postponement</option>
+                    <option value="Budget Freeze / Internal Re-allocation">Budget Freeze / Internal Re-allocation</option>
+                    <option value="Procurement / Legal Contract Issues">Procurement / Legal Contract Issues</option>
+                    <option value="Key Champion Left the Company">Key Champion Left the Company</option>
+                    <option value="Cold Communication / Unresponsive">Cold Communication / Unresponsive</option>
+                    <option value="Competitive Threat / Evaluation Reopened">Competitive Threat / Evaluation Reopened</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">
+                    Mandatory Notes & Nuances for Management
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={regressionNotes}
+                    onChange={(e) => setRegressionNotes(e.target.value)}
+                    placeholder="Describe specific details: e.g. Client CFO requested to defer signature to Q1 due to fiscal year close..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-rose-400"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                    Supervisor / Escalation Notification Email
+                  </label>
+                  <input
+                    type="email"
+                    value={supervisorEmail}
+                    onChange={(e) => {
+                      setSupervisorEmail(e.target.value);
+                      localStorage.setItem('biscuit_crm_supervisor_email', e.target.value);
+                    }}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300 font-mono"
+                    required
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setRegressingContact(null)}
+                    className="px-4 py-2 text-xs text-slate-400 hover:text-slate-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isRegressing}
+                    className="inline-flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold px-4 py-2 rounded-lg text-xs transition"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    {isRegressing ? 'Recording Regression...' : 'Confirm Stage Rollback'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="space-y-4">
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-300">
+                  Stage rollback recorded in Dexie and queued for Google Drive master ledger.
+                </div>
+
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs font-mono text-slate-300 max-h-48 overflow-y-auto whitespace-pre-wrap">
+                  {postRegressionDraft.body}
+                </div>
+
+                <div className="flex gap-2 pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegressingContact(null);
+                      setPostRegressionDraft(null);
+                    }}
+                    className="flex-1 py-2 text-xs text-slate-400 hover:text-slate-200 border border-slate-800 rounded-lg"
+                  >
+                    Dismiss
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDispatchRegressionAlert}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 px-4 rounded-lg text-xs transition shadow-md shadow-indigo-600/20"
+                  >
+                    <Mail className="w-3.5 h-3.5" /> Dispatch Alert in Gmail
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Slide-Over Deal Detail & History Drawer */}
