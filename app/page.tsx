@@ -5,7 +5,7 @@ import {
   ShieldCheck, Zap, Database, Building2, Calendar as CalendarIcon, 
   FileText, CheckCircle2, Loader2, FolderCheck, Plus, Search, 
   RefreshCw, ExternalLink, ChevronRight, ChevronLeft, ArrowRight, LayoutGrid, List, Clock,
-  BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin,
+  BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, EyeOff, MapPin,
   Cloud, CloudOff, Hash, Users, Download, FileSpreadsheet, AlertTriangle, AlertCircle, Timer,
   Target, RotateCcw, Laptop, Briefcase, HeartHandshake, Megaphone, Wrench, PoundSterling, Crown,
   Lock, Phone, PhoneCall, Upload, Flame, Sparkles, LogOut
@@ -155,6 +155,7 @@ export default function Dashboard() {
   const [token, setToken] = useState<string | null>(null);
   const [folderId, setFolderId] = useState<string>('');
   const [workspaceConfig, setWorkspaceConfig] = useState<UserWorkspaceConfig | null>(null);
+  const [showDriveDetails, setShowDriveDetails] = useState<boolean>(false);
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
@@ -267,7 +268,6 @@ export default function Dashboard() {
     const savedSupervisor = localStorage.getItem('biscuit_crm_supervisor_email');
     if (savedSupervisor) setSupervisorEmail(savedSupervisor);
 
-    // Hydrate persistent workspace config from localStorage
     const cachedFolder = localStorage.getItem('biscuit_crm_drive_folder_id');
     const cachedEmail = localStorage.getItem('biscuit_crm_user_email');
     const cachedDomain = localStorage.getItem('biscuit_crm_user_domain');
@@ -287,13 +287,10 @@ export default function Dashboard() {
     }
   };
 
-  // Google OAuth Token Resolver with Silent Refresh and Local Persistence
   const authenticateToken = useCallback((interactive = true): Promise<string> => {
     return new Promise((resolve, reject) => {
-      // 1. Check existing token in state
       if (token) return resolve(token);
 
-      // 2. Check cached token and expiry in localStorage
       const cachedToken = localStorage.getItem('biscuit_crm_google_token');
       const tokenExpiresAt = Number(localStorage.getItem('biscuit_crm_google_token_exp') || '0');
 
@@ -304,7 +301,6 @@ export default function Dashboard() {
 
       if (!window.google) return reject(new Error('Google library not loaded'));
 
-      // 3. Initialize Token Client
       if (!tokenClientRef.current) {
         tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
           client_id: clientId,
@@ -318,7 +314,6 @@ export default function Dashboard() {
             const expiresIn = Number(response.expires_in || 3600);
             const expTime = Date.now() + expiresIn * 1000;
 
-            // Cache token locally
             localStorage.setItem('biscuit_crm_google_token', accessToken);
             localStorage.setItem('biscuit_crm_google_token_exp', String(expTime));
             setToken(accessToken);
@@ -329,7 +324,6 @@ export default function Dashboard() {
               setFolderId(ws.driveFolderId);
               setSenderName(ws.userName);
 
-              // Cache workspace configuration
               localStorage.setItem('biscuit_crm_drive_folder_id', ws.driveFolderId);
               localStorage.setItem('biscuit_crm_user_email', ws.userEmail);
               localStorage.setItem('biscuit_crm_user_domain', ws.domain);
@@ -350,7 +344,6 @@ export default function Dashboard() {
         });
       }
 
-      // If interactive is false, try silent background refresh without user prompt
       if (!interactive) {
         tokenClientRef.current.requestAccessToken({ prompt: 'none' });
       } else {
@@ -359,7 +352,6 @@ export default function Dashboard() {
     });
   }, [clientId, token, SCOPES]);
 
-  // Attempt automatic background reconnection on load
   useEffect(() => {
     const attemptSilentLogin = async () => {
       const cachedToken = localStorage.getItem('biscuit_crm_google_token');
@@ -368,13 +360,10 @@ export default function Dashboard() {
       if (cachedToken && Date.now() < tokenExpiresAt - 60000) {
         setToken(cachedToken);
       } else if (localStorage.getItem('biscuit_crm_drive_folder_id')) {
-        // If user logged in before, attempt silent renewal once Google scripts initialize
         const checkGapi = setInterval(() => {
           if (window.google?.accounts?.oauth2) {
             clearInterval(checkGapi);
-            authenticateToken(false).catch(() => {
-              // Silent refresh denied or cookie expired; awaits manual click
-            });
+            authenticateToken(false).catch(() => {});
           }
         }, 500);
         setTimeout(() => clearInterval(checkGapi), 5000);
@@ -730,6 +719,7 @@ export default function Dashboard() {
   const isOperations = department === 'Operations';
   
   const canAddBusiness = isMD || isSales || isMarketing || isOperations;
+  const canViewDriveDetails = isMD || isIT;
 
   const allowedTabs = DEPARTMENT_CONFIG[department].allowedTabs;
   const CurrentDeptIcon = DEPARTMENT_CONFIG[department].icon;
@@ -815,6 +805,22 @@ export default function Dashboard() {
         )}
 
         <div className="flex items-center gap-3">
+          {/* IT & MD Exclusive Drive Diagnostics Visibility Toggle */}
+          {canViewDriveDetails && (
+            <button
+              onClick={() => setShowDriveDetails(!showDriveDetails)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                showDriveDetails
+                  ? 'bg-sky-500/15 border-sky-500/30 text-sky-300'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+              title="Toggle Drive Workspace Diagnostic Details"
+            >
+              {showDriveDetails ? <EyeOff className="w-3.5 h-3.5 text-sky-400" /> : <Eye className="w-3.5 h-3.5 text-slate-400" />}
+              <span>{showDriveDetails ? 'Hide Drive Workspace' : 'View Drive Workspace'}</span>
+            </button>
+          )}
+
           <button
             onClick={() => setIsCommandOpen(true)}
             className="flex items-center gap-2 bg-slate-900 border border-slate-800 hover:border-slate-700 px-3 py-1.5 rounded-lg text-xs text-slate-400 transition"
@@ -891,27 +897,46 @@ export default function Dashboard() {
         onAwardXP={awardRepXP}
       />
 
-      {/* Persistence & Action Toolbar */}
-      <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <FolderCheck className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-xs font-semibold text-slate-200">
-                User Private Drive Workspace: {folderId ? <code className="font-mono text-emerald-400 text-[11px]">{folderId}</code> : 'Awaiting Google Authentication'}
-              </h3>
-              {token && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                  <CheckCircle2 className="w-3 h-3" /> Connected
-                </span>
-              )}
+      {/* REVEALABLE PRIVATE DRIVE WORKSPACE BANNER (MD & IT ONLY, HIDDEN BY DEFAULT) */}
+      {canViewDriveDetails && showDriveDetails && (
+        <div className="p-4 rounded-xl bg-slate-900/80 border border-sky-500/30 flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20">
+              <FolderCheck className="w-4 h-4" />
             </div>
-            <p className="text-[11px] text-slate-400">
-              Active User: <strong className="text-slate-200">{senderName}</strong> &bull; Department: <strong className="text-amber-400">{DEPARTMENT_CONFIG[department].label}</strong>
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-semibold text-slate-200">
+                  User Private Drive Workspace: {folderId ? <code className="font-mono text-emerald-400 text-[11px]">{folderId}</code> : 'Awaiting Google Authentication'}
+                </h3>
+                {token && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                    <CheckCircle2 className="w-3 h-3" /> Connected
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Data is isolated to the user's private Google account. Zero telemetry or central server storage.
+              </p>
+            </div>
           </div>
+
+          <button
+            onClick={() => setShowDriveDetails(false)}
+            className="text-xs text-slate-400 hover:text-slate-200 underline"
+          >
+            Hide Workspace Details
+          </button>
+        </div>
+      )}
+
+      {/* ACTION TOOLBAR (COMPACT & CLEAN) */}
+      <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-3">
+        <div className="flex items-center gap-2 text-xs text-slate-400">
+          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span>Logged in as: <strong className="text-slate-200">{senderName}</strong></span>
+          <span>&bull;</span>
+          <span className="text-amber-400 font-semibold">{DEPARTMENT_CONFIG[department].label}</span>
         </div>
 
         {/* Action Buttons */}
@@ -943,7 +968,7 @@ export default function Dashboard() {
               onClick={() => handleSyncToSheets(false)}
               className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition shadow"
             >
-              <Database className="w-3.5 h-3.5" /> Connect Your Google Drive
+              <Database className="w-3.5 h-3.5" /> Connect Google Drive
             </button>
           ) : (
             <div className="flex items-center gap-1.5">
@@ -1372,7 +1397,6 @@ export default function Dashboard() {
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-200">✕</button>
             </div>
 
-            {/* Optional UK Companies House Lookup */}
             <div className="mb-4 p-3.5 bg-slate-950/60 rounded-xl border border-slate-800/80">
               <label className="text-xs font-semibold text-slate-300 block mb-1">
                 Optional: UK Companies House Autofill (Auto-extract CRN & Address)
