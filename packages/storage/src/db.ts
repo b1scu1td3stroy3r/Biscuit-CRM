@@ -12,6 +12,18 @@ export interface Contact {
   updatedAt: string;
 }
 
+export interface ProjectTask {
+  id?: number;
+  title: string;
+  companyName: string;
+  startDate: string;
+  endDate: string;
+  progress: number; // 0 - 100
+  calendarEventId?: string;
+  synced: boolean;
+  updatedAt: string;
+}
+
 export interface OutboxMutation {
   id?: number;
   type: 'INSERT' | 'UPDATE' | 'DELETE';
@@ -22,12 +34,14 @@ export interface OutboxMutation {
 
 export class BiscuitDatabase extends Dexie {
   contacts!: Table<Contact>;
+  projects!: Table<ProjectTask>;
   outbox!: Table<OutboxMutation>;
 
   constructor() {
     super('BiscuitCRM_DB');
-    this.version(1).stores({
+    this.version(2).stores({
       contacts: '++id, name, company, crn, stage, synced',
+      projects: '++id, title, companyName, startDate, endDate, synced',
       outbox: '++id, type, table, timestamp',
     });
   }
