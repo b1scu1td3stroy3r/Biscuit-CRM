@@ -39,6 +39,39 @@ export interface StoredTemplate {
   updatedAt: string;
 }
 
+export interface WhiteboardNote {
+  id?: number;
+  title: string;
+  content: string;
+  color: 'amber' | 'sky' | 'emerald' | 'purple' | 'rose';
+  author: string;
+  createdAt: string;
+}
+
+export interface LeaveRequest {
+  id?: number;
+  employeeName: string;
+  leaveType: 'Annual Leave' | 'Sick Leave' | 'Compassionate' | 'Training';
+  startDate: string;
+  endDate: string;
+  days: number;
+  status: 'Pending' | 'Approved' | 'Rejected';
+  notes?: string;
+  createdAt: string;
+}
+
+export interface EmployeeProfile {
+  id?: number;
+  name: string;
+  role: string;
+  xp: number;
+  level: number;
+  dealsClosed: number;
+  handoverActive: boolean;
+  handoverTo?: string;
+  handoverNotes?: string;
+}
+
 export interface OutboxMutation {
   id?: number;
   type: 'INSERT' | 'UPDATE' | 'DELETE';
@@ -60,15 +93,21 @@ export class BiscuitDatabase extends Dexie {
   contacts!: Table<Contact, number>;
   projects!: Table<ProjectTask, number>;
   templates!: Table<StoredTemplate, number>;
+  whiteboardNotes!: Table<WhiteboardNote, number>;
+  leaveRequests!: Table<LeaveRequest, number>;
+  employees!: Table<EmployeeProfile, number>;
   outbox!: Table<OutboxMutation, number>;
   auditLogs!: Table<AuditRecord, number>;
 
   constructor() {
     super('BiscuitDatabase');
-    this.version(3).stores({
+    this.version(4).stores({
       contacts: '++id, accountNumber, name, company, crn, stage, synced, updatedAt',
       projects: '++id, title, companyName, synced, updatedAt',
       templates: '++id, templateKey, category, updatedAt',
+      whiteboardNotes: '++id, author, color, createdAt',
+      leaveRequests: '++id, employeeName, status, startDate, endDate',
+      employees: '++id, name, xp, level',
       outbox: '++id, type, table, timestamp',
       auditLogs: '++id, timestamp, actor, action, entityId',
     });
