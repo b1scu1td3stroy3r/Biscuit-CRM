@@ -10,6 +10,15 @@ import {
 import { db, Contact, WhiteboardNote, LeaveRequest, EmployeeProfile, DepartmentRole, StaffHierarchyTier } from '../packages/storage/src/db';
 import { syncLeaveToGoogleCalendar, deleteCalendarEvent } from '../packages/storage/src/calendarSync';
 
+interface EmployeeHubProps {
+  currentRepName: string;
+  contacts: Contact[];
+  onRepNameChange: (newName: string) => void;
+  onAdvanceContactStage?: (contact: Contact) => void;
+  onAuthenticateGoogle?: () => Promise<string>;
+}
+
+const NOTE_COLORS = {
   amber: 'bg-amber-950/40 border-amber-500/30 text-amber-200',
   sky: 'bg-sky-950/40 border-sky-500/30 text-sky-200',
   emerald: 'bg-emerald-950/40 border-emerald-500/30 text-emerald-200',
@@ -41,7 +50,6 @@ export function computeProgression(tier: StaffHierarchyTier, xp: number) {
     };
   }
 
-  // 10-level staff progression
   const level = Math.min(10, Math.max(1, Math.floor(xp / 200) + 1));
   const staffTitles = [
     'Apprentice Associate',
@@ -581,7 +589,7 @@ export default function EmployeeHub({
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-semibold text-slate-200">{req.leaveType}</span>
-                      <span className="text-[10px] text-slate-400 font-mono">({req.days} days)</span>
+                      <span className="text-[10px] font-mono text-slate-400">({req.days} days)</span>
                       {req.calendarEventId && (
                         <span className="inline-flex items-center gap-1 text-[10px] font-mono text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20">
                           <CalendarCheck2 className="w-3 h-3" /> Synced to GCal
