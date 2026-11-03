@@ -1,6 +1,7 @@
 import Dexie, { Table } from 'dexie';
 
 export type DepartmentRole = 'Sales' | 'Operations' | 'HR' | 'Marketing' | 'IT' | 'Finance' | 'MD';
+export type StaffHierarchyTier = 'Staff' | 'Team Leader' | 'Manager' | 'Director';
 
 export interface Contact {
   id?: number;
@@ -28,6 +29,8 @@ export interface ProjectTask {
   startDate: string;
   endDate: string;
   progress: number;
+  assignee?: string;
+  department?: DepartmentRole;
   calendarEventId?: string;
   synced: boolean;
   updatedAt: string;
@@ -55,11 +58,13 @@ export interface WhiteboardNote {
 export interface LeaveRequest {
   id?: number;
   employeeName: string;
+  department: DepartmentRole;
   leaveType: 'Annual Leave' | 'Sick Leave' | 'Compassionate' | 'Training';
   startDate: string;
   endDate: string;
   days: number;
   status: 'Pending' | 'Approved' | 'Rejected';
+  approvedBy?: string;
   notes?: string;
   calendarEventId?: string;
   createdAt: string;
@@ -70,6 +75,8 @@ export interface EmployeeProfile {
   name: string;
   role: string;
   department: DepartmentRole;
+  tier: StaffHierarchyTier;
+  status: 'Active' | 'Dormant';
   xp: number;
   level: number;
   dealsClosed: number;
@@ -107,13 +114,13 @@ export class BiscuitDatabase extends Dexie {
 
   constructor() {
     super('BiscuitDatabase');
-    this.version(8).stores({
-      contacts: '++id, accountNumber, name, company, crn, stage, invoiceStatus, synced, updatedAt',
-      projects: '++id, title, companyName, synced, updatedAt',
+    this.version(9).stores({
+      contacts: '++id, accountNumber, name, company, crn, stage, accountManager, invoiceStatus, synced, updatedAt',
+      projects: '++id, title, companyName, assignee, department, synced, updatedAt',
       templates: '++id, templateKey, category, updatedAt',
       whiteboardNotes: '++id, author, color, createdAt',
-      leaveRequests: '++id, employeeName, status, startDate, endDate',
-      employees: '++id, name, department, xp, level',
+      leaveRequests: '++id, employeeName, department, status, startDate, endDate',
+      employees: '++id, name, department, tier, status, xp, level',
       outbox: '++id, type, table, timestamp',
       auditLogs: '++id, timestamp, actor, action, entityId',
     });

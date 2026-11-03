@@ -435,8 +435,8 @@ export default function Dashboard() {
       const allProfiles = await db.employees.toArray();
       const profile = allProfiles.find(p => p.name.toLowerCase() === senderName.toLowerCase());
       if (profile && profile.id) {
-        const step = profile.tier === 'Staff' ? 200 : 250;
-        const maxLvl = profile.tier === 'Staff' ? 10 : 5;
+        const step = (profile as any)?.tier === 'Staff' ? 200 : 250;
+        const maxLvl = (profile as any)?.tier === 'Staff' ? 10 : 5;
         const updatedXP = profile.xp + 50;
         const updatedLevel = Math.min(maxLvl, Math.floor(updatedXP / step) + 1);
         await db.employees.update(profile.id, { xp: updatedXP, level: updatedLevel });
