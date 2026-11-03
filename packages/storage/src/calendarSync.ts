@@ -54,7 +54,6 @@ export async function syncTaskToGoogleCalendar(accessToken: string, task: Calend
 }
 
 export async function syncLeaveToGoogleCalendar(accessToken: string, leave: LeaveCalendarPayload): Promise<string> {
-  // All-day multi-day event blocking busy time
   const event = {
     summary: `OOO: ${leave.employeeName} (${leave.leaveType})`,
     description: `Out of Office - ${leave.leaveType}\nNotes: ${leave.notes || 'None provided'}\nManaged via Biscuit CRM Employee Hub.`,
@@ -64,7 +63,7 @@ export async function syncLeaveToGoogleCalendar(accessToken: string, leave: Leav
     end: {
       date: leave.endDate,
     },
-    transparency: 'opaque', // Blocks time as Busy on Google Calendar
+    transparency: 'opaque',
   };
 
   const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
@@ -83,4 +82,19 @@ export async function syncLeaveToGoogleCalendar(accessToken: string, leave: Leav
 
   const data = await res.json();
   return data.id;
+}
+
+export async function deleteCalendarEvent(accessToken: string, eventId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    return res.ok || res.status === 404 || res.status === 410;
+  } catch (err) {
+    console.warn('Could not delete calendar event:', err);
+    return false;
+  }
 }
