@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
+import { X, 
   Trophy, Award, Flame, UserCheck, Calendar, ArrowRightLeft, 
   StickyNote, Plus, Trash2, CheckCircle2, Clock, ShieldCheck, 
   Sparkles, Check, AlertCircle, Send, CalendarCheck2, Mail, ExternalLink,
   XCircle, Crown
 } from 'lucide-react';
-import { db, Contact, WhiteboardNote, LeaveRequest, EmployeeProfile, DepartmentRole, StaffHierarchyTier } from '../packages/storage/src/db';
-import { syncLeaveToGoogleCalendar, deleteCalendarEvent } from '../packages/storage/src/calendarSync';
+import { X, db, Contact, WhiteboardNote, LeaveRequest, EmployeeProfile, DepartmentRole, StaffHierarchyTier } from '../packages/storage/src/db';
+import { X, syncLeaveToGoogleCalendar, deleteCalendarEvent } from '../packages/storage/src/calendarSync';
 
 interface EmployeeHubProps {
   currentRepName: string;
