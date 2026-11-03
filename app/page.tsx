@@ -6,7 +6,8 @@ import {
   FileText, CheckCircle2, Loader2, FolderCheck, Plus, Search, 
   RefreshCw, ExternalLink, ChevronRight, ChevronLeft, ArrowRight, LayoutGrid, List, Clock,
   BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin,
-  Cloud, CloudOff, Hash, Users, Download, FileSpreadsheet, AlertTriangle, AlertCircle, Timer
+  Cloud, CloudOff, Hash, Users, Download, FileSpreadsheet, AlertTriangle, AlertCircle, Timer,
+  Target, RotateCcw
 } from 'lucide-react';
 import { db, Contact, ProjectTask, StoredTemplate, AuditRecord } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
@@ -27,16 +28,52 @@ declare global {
 }
 
 const PIPELINE_STAGES = [
-  { key: 'Lead', label: '1. Inbound Leads', color: 'border-amber-500/40 text-amber-400 bg-amber-500/10' },
-  { key: 'Sales', label: '2. Active Sales', color: 'border-sky-500/40 text-sky-400 bg-sky-500/10' },
-  { key: 'Procurement', label: '3. Procurement', color: 'border-purple-500/40 text-purple-400 bg-purple-500/10' },
-  { key: 'Logistics', label: '4. Logistics', color: 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10' },
-  { key: 'Customer Service', label: '5. Retention / CS', color: 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' },
+  { 
+    key: 'Prospect', 
+    label: '0. Cold Prospects', 
+    desc: 'Target list for cold calling (never bought)',
+    color: 'border-slate-500/40 text-slate-300 bg-slate-500/10' 
+  },
+  { 
+    key: 'Lead', 
+    label: '1. Inbound Leads', 
+    desc: 'Qualified form submissions & warm intros',
+    color: 'border-amber-500/40 text-amber-400 bg-amber-500/10' 
+  },
+  { 
+    key: 'Sales', 
+    label: '2. Active Sales', 
+    desc: 'Discovery, demos & commercial negotiation',
+    color: 'border-sky-500/40 text-sky-400 bg-sky-500/10' 
+  },
+  { 
+    key: 'Procurement', 
+    label: '3. Procurement', 
+    desc: 'Legal agreements & vendor quotes',
+    color: 'border-purple-500/40 text-purple-400 bg-purple-500/10' 
+  },
+  { 
+    key: 'Logistics', 
+    label: '4. Logistics', 
+    desc: 'Dispatch SLA & delivery fulfillment',
+    color: 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10' 
+  },
+  { 
+    key: 'Customer Service', 
+    label: '5. Retention / CS', 
+    desc: 'Onboarding follow-up & active support',
+    color: 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' 
+  },
+  { 
+    key: 'Winback', 
+    label: '6. Win-Backs', 
+    desc: 'Cold deals or inactive > 12 months',
+    color: 'border-rose-500/40 text-rose-400 bg-rose-500/10' 
+  },
 ] as const;
 
 type StageType = typeof PIPELINE_STAGES[number]['key'];
 
-// SLA Inactivity Calculation Engine
 interface SLAStatus {
   daysInactive: number;
   level: 'normal' | 'warning' | 'breach';
@@ -52,7 +89,10 @@ function calculateSLAStatus(contact: Contact): SLAStatus {
   let warnDays = 5;
   let breachDays = 10;
 
-  if (contact.stage === 'Lead') {
+  if (contact.stage === 'Prospect') {
+    warnDays = 7;
+    breachDays = 14;
+  } else if (contact.stage === 'Lead') {
     warnDays = 2;
     breachDays = 4;
   } else if (contact.stage === 'Sales') {
@@ -67,6 +107,9 @@ function calculateSLAStatus(contact: Contact): SLAStatus {
   } else if (contact.stage === 'Customer Service') {
     warnDays = 14;
     breachDays = 30;
+  } else if (contact.stage === 'Winback') {
+    warnDays = 30;
+    breachDays = 60;
   }
 
   if (diffDays >= breachDays) {
@@ -126,6 +169,16 @@ function getMilestoneConfigForStage(stage: StageType, companyOrName: string) {
       startDate: format(today),
       endDate: format(end),
       progress: 80,
+    };
+  }
+
+  if (stage === 'Winback') {
+    const end = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+    return {
+      title: `Winback Re-engagement Outreach (${companyOrName})`,
+      startDate: format(today),
+      endDate: format(end),
+      progress: 10,
     };
   }
 
@@ -197,7 +250,7 @@ export default function Dashboard() {
     accountManager: '',
     billingAddress: '',
     shippingAddress: '',
-    stage: 'Lead' as StageType,
+    stage: 'Prospect' as StageType,
   });
 
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
@@ -317,7 +370,7 @@ export default function Dashboard() {
     };
   }, [handleSyncToSheets]);
 
-  const handleOpenAddModal = () => {
+  const handleOpenAddModal = (presetStage?: StageType) => {
     setNewContact({
       accountNumber: `ACC-${Math.floor(10000 + Math.random() * 90000)}`,
       name: '',
@@ -328,7 +381,7 @@ export default function Dashboard() {
       accountManager: senderName,
       billingAddress: '',
       shippingAddress: '',
-      stage: 'Lead',
+      stage: presetStage || 'Prospect',
     });
     setIsModalOpen(true);
   };
@@ -644,7 +697,7 @@ export default function Dashboard() {
         actor: senderName,
         action: 'CREATE_CONTACT',
         entityId: `Contact_${newId}`,
-        details: `Intake customer ${newContact.name} [Account No: ${assignedAcc}]`,
+        details: `Intake customer ${newContact.name} [Account No: ${assignedAcc}] into "${newContact.stage}"`,
       }).then(() => {
         const cachedAudit = localStorage.getItem('biscuit_crm_audit_sheet_id');
         if (cachedAudit) setAuditSheetId(cachedAudit);
@@ -706,7 +759,7 @@ export default function Dashboard() {
   const hasUnsynced = contacts.some(c => !c.synced);
 
   return (
-    <main className="max-w-7xl mx-auto px-6 py-10">
+    <main className="max-w-[1500px] mx-auto px-6 py-10">
       <header className="flex items-center justify-between border-b border-slate-800 pb-6 mb-8">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-3">
@@ -858,27 +911,9 @@ export default function Dashboard() {
             Export Audit CSV ({auditLogs.length})
           </button>
 
-          {viewMode === 'gantt' && (
-            <button
-              onClick={() => setIsTaskModalOpen(true)}
-              className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-xs transition shadow-md shadow-amber-500/10"
-            >
-              <Plus className="w-3.5 h-3.5" /> New Calendar Milestone
-            </button>
-          )}
-
-          {viewMode === 'templates' && (
-            <button
-              onClick={() => setIsNewTemplateModalOpen(true)}
-              className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-xs transition shadow-md shadow-amber-500/10"
-            >
-              <Plus className="w-3.5 h-3.5" /> Create New Template
-            </button>
-          )}
-
           {(viewMode === 'kanban' || viewMode === 'table') && (
             <button
-              onClick={handleOpenAddModal}
+              onClick={() => handleOpenAddModal('Prospect')}
               className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-xs transition shadow-md shadow-amber-500/10"
             >
               <Plus className="w-3.5 h-3.5" /> Add Customer Account
@@ -898,24 +933,27 @@ export default function Dashboard() {
         />
       )}
 
-      {/* View 2: Kanban Pipeline with SLA Inactivity Badges */}
+      {/* View 2: 7-Stage Extended Kanban Board */}
       {viewMode === 'kanban' && (
-        <section className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+        <section className="grid grid-cols-1 md:grid-cols-7 gap-3 mb-8">
           {PIPELINE_STAGES.map((col, idx) => {
             const colContacts = contacts.filter(c => c.stage === col.key);
             const isFirstCol = idx === 0;
             const isLastCol = idx === PIPELINE_STAGES.length - 1;
 
             return (
-              <div key={col.key} className="rounded-xl border border-slate-800 bg-slate-900/40 p-3 flex flex-col min-h-[460px]">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3">
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${col.color}`}>
-                    {col.label}
-                  </span>
-                  <span className="text-xs font-mono text-slate-500">{colContacts.length}</span>
+              <div key={col.key} className="rounded-xl border border-slate-800 bg-slate-900/40 p-2.5 flex flex-col min-h-[500px]">
+                <div className="pb-2.5 border-b border-slate-800/80 mb-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${col.color}`}>
+                      {col.label}
+                    </span>
+                    <span className="text-[11px] font-mono text-slate-500">{colContacts.length}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1 leading-tight">{col.desc}</p>
                 </div>
 
-                <div className="space-y-3 flex-1 overflow-y-auto">
+                <div className="space-y-2.5 flex-1 overflow-y-auto">
                   {colContacts.map(c => {
                     const sla = calculateSLAStatus(c);
 
@@ -923,7 +961,7 @@ export default function Dashboard() {
                       <div 
                         key={c.id} 
                         onClick={() => setSelectedDealForDrawer(c)}
-                        className={`p-3.5 rounded-lg border transition shadow-sm space-y-2.5 cursor-pointer group ${
+                        className={`p-3 rounded-lg border transition shadow-sm space-y-2 cursor-pointer group ${
                           sla.level === 'breach'
                             ? 'bg-rose-950/20 border-rose-500/60 hover:border-rose-400'
                             : sla.level === 'warning'
@@ -933,72 +971,58 @@ export default function Dashboard() {
                       >
                         <div className="flex items-start justify-between">
                           <div>
-                            <div className="font-semibold text-slate-100 text-sm leading-tight group-hover:text-amber-400 transition-colors flex items-center gap-1.5">
+                            <div className="font-semibold text-slate-100 text-xs leading-tight group-hover:text-amber-400 transition-colors flex items-center gap-1">
                               <span>{c.name}</span>
-                              <Eye className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 text-amber-400 transition-opacity" />
+                              <Eye className="w-3 h-3 opacity-0 group-hover:opacity-100 text-amber-400 transition-opacity" />
                             </div>
-                            <div className="text-[11px] text-slate-400 mt-0.5">{c.company || 'Private Account'}</div>
+                            <div className="text-[10px] text-slate-400 mt-0.5 truncate max-w-[140px]">{c.company || 'Private Account'}</div>
                           </div>
                           {c.synced ? (
-                            <span className="w-2 h-2 rounded-full bg-emerald-400" title="Synced to Sheets" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title="Synced" />
                           ) : (
-                            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Outbox Queue" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" title="Outbox Queued" />
                           )}
                         </div>
 
                         {/* SLA Inactivity Status Badge */}
-                        <div className="flex items-center justify-between pt-0.5">
-                          <span className={`inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded border ${sla.badgeClass}`}>
+                        <div className="pt-0.5">
+                          <span className={`inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded border ${sla.badgeClass}`}>
                             {sla.level === 'breach' ? (
-                              <AlertCircle className="w-3 h-3 text-rose-400" />
+                              <AlertCircle className="w-2.5 h-2.5 text-rose-400" />
                             ) : sla.level === 'warning' ? (
-                              <AlertTriangle className="w-3 h-3 text-amber-400" />
+                              <AlertTriangle className="w-2.5 h-2.5 text-amber-400" />
                             ) : (
-                              <Timer className="w-3 h-3 text-slate-400" />
+                              <Timer className="w-2.5 h-2.5 text-slate-400" />
                             )}
                             {sla.badgeLabel}
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded font-semibold">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.5 rounded font-semibold">
                             {c.accountNumber}
                           </span>
                           {c.crn && (
-                            <span className="text-[10px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded">
-                              CRN: {c.crn}
+                            <span className="text-[9px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-1 py-0.5 rounded">
+                              CRN:{c.crn}
                             </span>
                           )}
                         </div>
 
-                        {c.accountManager && (
-                          <div className="text-[10px] text-slate-400 flex items-center gap-1">
-                            <UserCheck className="w-3 h-3 text-amber-400" />
-                            <span>{c.accountManager}</span>
-                          </div>
-                        )}
+                        <div className="text-[10px] text-slate-400 truncate">{c.email}</div>
 
-                        <div className="text-[11px] text-slate-400 truncate">{c.email}</div>
-
-                        <div className="pt-1 flex items-center justify-between border-t border-slate-800/60">
-                          <span className="text-[10px] font-medium text-amber-400/80 hover:text-amber-300">
-                            View History & Details →
-                          </span>
-                        </div>
-
-                        {/* Directional Controls: Move Backward & Move Forward */}
-                        <div className="flex items-center gap-1.5 pt-1">
+                        {/* Directional Controls */}
+                        <div className="flex items-center gap-1 pt-1 border-t border-slate-800/60">
                           {!isFirstCol && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 initiateStageRegression(c);
                               }}
-                              className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-medium py-1.5 px-2 bg-slate-800 hover:bg-rose-950/50 hover:text-rose-300 text-slate-400 rounded border border-slate-700/60 hover:border-rose-500/40 transition"
-                              title="Revert deal backward due to delay or cold interest"
+                              className="p-1 text-[10px] bg-slate-800 hover:bg-rose-950/50 hover:text-rose-300 text-slate-400 rounded border border-slate-700/60 transition"
+                              title="Revert stage"
                             >
-                              <ChevronLeft className="w-3.5 h-3.5 text-rose-400" />
-                              <span>Revert</span>
+                              <ChevronLeft className="w-3 h-3 text-rose-400" />
                             </button>
                           )}
 
@@ -1008,10 +1032,10 @@ export default function Dashboard() {
                                 e.stopPropagation();
                                 advanceStage(c);
                               }}
-                              className={`${isFirstCol ? 'w-full' : 'flex-1'} inline-flex items-center justify-center gap-1 text-[11px] font-medium py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700/60 hover:border-amber-500/40 transition`}
+                              className="flex-1 inline-flex items-center justify-center gap-1 text-[10px] font-medium py-1 px-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700/60 hover:border-amber-500/40 transition"
                             >
-                              <span>Move Next</span>
-                              <ChevronRight className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Next</span>
+                              <ChevronRight className="w-3 h-3 text-amber-400" />
                             </button>
                           )}
                         </div>
@@ -1020,8 +1044,8 @@ export default function Dashboard() {
                   })}
 
                   {colContacts.length === 0 && (
-                    <div className="h-28 border border-dashed border-slate-800/80 rounded-lg flex items-center justify-center text-[11px] text-slate-600">
-                      Empty stage
+                    <div className="h-24 border border-dashed border-slate-800/80 rounded-lg flex items-center justify-center text-[10px] text-slate-600">
+                      Empty
                     </div>
                   )}
                 </div>
@@ -1031,13 +1055,13 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* View 3: Table View with SLA Column */}
+      {/* View 3: Table View */}
       {viewMode === 'table' && (
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
             <div>
               <h2 className="font-semibold text-slate-200 text-sm">All Customer Accounts</h2>
-              <p className="text-xs text-slate-400 mt-0.5">Primary pipeline dataset synced to Dexie and Google Sheets</p>
+              <p className="text-xs text-slate-400 mt-0.5">Primary pipeline dataset across all 7 lifecycle stages</p>
             </div>
             <div className="flex items-center gap-3">
               <button
@@ -1066,7 +1090,7 @@ export default function Dashboard() {
             </thead>
             <tbody className="divide-y divide-slate-800">
               {contacts.map((c) => {
-                const isFirstCol = c.stage === 'Lead';
+                const isFirstCol = c.stage === 'Prospect';
                 const sla = calculateSLAStatus(c);
 
                 return (
@@ -1156,7 +1180,7 @@ export default function Dashboard() {
 
           {tasks.length === 0 ? (
             <div className="py-14 text-center text-slate-500 text-sm">
-              No milestones scheduled yet. Advance a deal or click <strong>+ New Calendar Milestone</strong>.
+              No milestones scheduled yet. Advance a deal or schedule milestones.
             </div>
           ) : (
             <div className="space-y-4">
@@ -1448,7 +1472,7 @@ export default function Dashboard() {
         onClose={() => setIsCommandOpen(false)}
         contacts={contacts}
         onSelectView={(mode) => setViewMode(mode)}
-        onOpenNewContact={handleOpenAddModal}
+        onOpenNewContact={() => handleOpenAddModal('Prospect')}
         onOpenNewMilestone={() => setIsTaskModalOpen(true)}
         onOpenNewTemplate={() => setIsNewTemplateModalOpen(true)}
       />
@@ -1521,6 +1545,18 @@ export default function Dashboard() {
             <form onSubmit={handleCreateContact} className="space-y-3.5">
               <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Initial Pipeline Stage</label>
+                  <select
+                    value={newContact.stage}
+                    onChange={(e) => setNewContact({ ...newContact, stage: e.target.value as any })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
+                  >
+                    {PIPELINE_STAGES.map(s => (
+                      <option key={s.key} value={s.key}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <label className="text-xs font-semibold text-slate-400 block mb-1">Account Number</label>
                   <input
                     type="text"
@@ -1530,8 +1566,11 @@ export default function Dashboard() {
                     required
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Customer Full Name</label>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Customer / Contact Name</label>
                   <input
                     type="text"
                     placeholder="e.g. David Clarke"
@@ -1541,27 +1580,14 @@ export default function Dashboard() {
                     required
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-400 block mb-1">Company (Optional)</label>
                   <input
                     type="text"
-                    placeholder="Leave blank if retail customer"
+                    placeholder="e.g. Acme Corp"
                     value={newContact.company}
                     onChange={(e) => setNewContact({ ...newContact, company: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Company CRN (Optional)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 12849501"
-                    value={newContact.crn}
-                    onChange={(e) => setNewContact({ ...newContact, crn: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-slate-300"
                   />
                 </div>
               </div>
@@ -1585,40 +1611,6 @@ export default function Dashboard() {
                     value={newContact.phone}
                     onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-slate-100"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">Account Manager</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Sarah Jenkins"
-                  value={newContact.accountManager}
-                  onChange={(e) => setNewContact({ ...newContact, accountManager: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Billing Address</label>
-                  <textarea
-                    rows={2}
-                    placeholder="Registered billing address"
-                    value={newContact.billingAddress}
-                    onChange={(e) => setNewContact({ ...newContact, billingAddress: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Shipping / Delivery Address</label>
-                  <textarea
-                    rows={2}
-                    placeholder="Physical fulfillment destination"
-                    value={newContact.shippingAddress}
-                    onChange={(e) => setNewContact({ ...newContact, shippingAddress: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100"
                   />
                 </div>
               </div>
