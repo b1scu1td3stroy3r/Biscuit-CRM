@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Bell, Sparkles, Award, PoundSterling, Briefcase, HeartHandshake, 
-  Send, Plus, Flame, Megaphone, Baby, CheckCircle2, Filter
+  Send, Plus, Flame, Megaphone, Baby, CheckCircle2, ChevronLeft, ChevronRight,
+  Smile, Rocket, Heart, ThumbsUp
 } from 'lucide-react';
 import { db, NewsItem, DepartmentRole } from '../packages/storage/src/db';
 
@@ -12,6 +13,14 @@ interface DepartmentNewsfeedProps {
   currentUser: string;
   onAwardXP: (amount: number, reason: string) => void;
 }
+
+const EMOJI_OPTIONS = [
+  { emoji: '🔥', label: 'Fire' },
+  { emoji: '🚀', label: 'Rocket' },
+  { emoji: '👏', label: 'Applause' },
+  { emoji: '🍪', label: 'Biscuit' },
+  { emoji: '❤️', label: 'Love' },
+];
 
 export default function DepartmentNewsfeed({
   currentDepartment,
@@ -28,17 +37,27 @@ export default function DepartmentNewsfeed({
     isCompanyWide: true,
   });
 
-  const loadNews = async () => {
-    await db.newsFeed.where('title').startsWith('David Miller').delete();
-    await db.newsFeed.where('title').startsWith('£14,400').delete();
-    await db.newsFeed.where('title').startsWith('Team Announcement: Maternity').delete();
-    await db.newsFeed.where('title').startsWith('Deal Closed: £8,500').delete();
-    const items = await db.newsFeed.toArray();
-    setNews(items.reverse());
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const cleanupOldItemsAndLoad = async () => {
+    // 24-hour midnight boundary: Wipe events prior to today's midnight (00:00:00)
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    const todayMidnightISO = todayMidnight.toISOString();
+
+    const allItems = await db.newsFeed.toArray();
+    for (const item of allItems) {
+      if (item.createdAt < todayMidnightISO && item.id) {
+        await db.newsFeed.delete(item.id);
+      }
+    }
+
+    const currentDayItems = await db.newsFeed.toArray();
+    setNews(currentDayItems.reverse());
   };
 
   useEffect(() => {
-    loadNews();
+    cleanupOldItemsAndLoad();
   }, [currentDepartment]);
 
   const handlePostNews = async (e: React.FormEvent) => {
@@ -52,6 +71,7 @@ export default function DepartmentNewsfeed({
       department: postForm.isCompanyWide ? 'Company-Wide' : currentDepartment,
       actor: currentUser,
       createdAt: new Date().toISOString(),
+      reactions: {},
       badgeColor: postForm.category === 'Level Up' ? 'border-amber-500/30 text-amber-300 bg-amber-500/10' :
                   postForm.category === 'Invoice Paid' ? 'border-emerald-500/30 text-emerald-300 bg-emerald-500/10' :
                   postForm.category === 'Deal Closed' ? 'border-sky-500/30 text-sky-300 bg-sky-500/10' :
@@ -60,10 +80,27 @@ export default function DepartmentNewsfeed({
     };
 
     await db.newsFeed.add(payload);
-    onAwardXP(15, `Broadcasted update: ${payload.title}`);
+    onAwardXP(15, `Broadcasted team achievement: ${payload.title}`);
     setPostForm({ title: '', content: '', category: 'Announcement', isCompanyWide: true });
     setIsPosting(false);
-    await loadNews();
+    await cleanupOldItemsAndLoad();
+  };
+
+  const handleAddReaction = async (item: NewsItem, emoji: string) => {
+    if (!item.id) return;
+    const currentReactions = { ...(item.reactions || {}) };
+    currentReactions[emoji] = (currentReactions[emoji] || 0) + 1;
+
+    await db.newsFeed.update(item.id, { reactions: currentReactions });
+    onAwardXP(5, `Cheered colleague update with ${emoji}`);
+    await cleanupOldItemsAndLoad();
+  };
+
+  const scroll = (direction: 'left' | 'right') => {
+    if (scrollRef.current) {
+      const offset = direction === 'left' ? -380 : 380;
+      scrollRef.current.scrollBy({ left: offset, behavior: 'smooth' });
+    }
   };
 
   const filteredNews = news.filter((item) => {
@@ -74,41 +111,63 @@ export default function DepartmentNewsfeed({
   const getCategoryIcon = (category: NewsItem['category']) => {
     switch (category) {
       case 'Level Up':
-        return <Flame className="w-4 h-4 text-amber-400" />;
+        return <Flame className="w-3.5 h-3.5 text-amber-400" />;
       case 'Invoice Paid':
-        return <PoundSterling className="w-4 h-4 text-emerald-400" />;
+        return <PoundSterling className="w-3.5 h-3.5 text-emerald-400" />;
       case 'Deal Closed':
-        return <Briefcase className="w-4 h-4 text-sky-400" />;
+        return <Briefcase className="w-3.5 h-3.5 text-sky-400" />;
       case 'Maternity / Leave':
-        return <Baby className="w-4 h-4 text-purple-400" />;
+        return <Baby className="w-3.5 h-3.5 text-purple-400" />;
       case 'Promotion':
-        return <Award className="w-4 h-4 text-amber-400" />;
+        return <Award className="w-3.5 h-3.5 text-amber-400" />;
       default:
-        return <Megaphone className="w-4 h-4 text-slate-400" />;
+        return <Sparkles className="w-3.5 h-3.5 text-amber-400" />;
     }
   };
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 space-y-4 mb-8 shadow-sm">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 mb-6 shadow-sm space-y-3">
+      {/* Header Bar */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
         <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
-            <Bell className="w-4 h-4" />
+          <div className="p-2 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-500/10 text-amber-400 border border-amber-500/30">
+            <Sparkles className="w-4 h-4 animate-pulse" />
           </div>
           <div>
-            <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
-              Department & Company Activity Newsfeed
-              <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
-                Live Stream
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-slate-100 text-sm">
+                Daily Motivation & Team Ticker
+              </h3>
+              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                Refreshes Daily at Midnight
               </span>
-            </h3>
+            </div>
             <p className="text-[11px] text-slate-400">
-              Showing key updates for {currentDepartment === 'MD' ? 'All Executive Divisions' : `${currentDepartment} & Company-Wide`}
+              Today's wins, milestones, and encouraging cheers across {currentDepartment === 'MD' ? 'All Divisions' : currentDepartment}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Scroll Navigation Chevrons */}
+          <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 rounded-lg p-0.5">
+            <button
+              onClick={() => scroll('left')}
+              className="p-1 rounded text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition"
+              title="Scroll left"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => scroll('right')}
+              className="p-1 rounded text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition"
+              title="Scroll right"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
           <div className="flex bg-slate-950 border border-slate-800 rounded-lg p-0.5 text-xs">
             <button
               onClick={() => setFilterMode('department')}
@@ -116,7 +175,7 @@ export default function DepartmentNewsfeed({
                 filterMode === 'department' ? 'bg-slate-800 text-slate-100' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              {currentDepartment} & General
+              {currentDepartment}
             </button>
             <button
               onClick={() => setFilterMode('all')}
@@ -130,22 +189,22 @@ export default function DepartmentNewsfeed({
 
           <button
             onClick={() => setIsPosting(!isPosting)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-semibold transition"
+            className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-semibold transition"
           >
             <Plus className="w-3.5 h-3.5" />
-            {isPosting ? 'Close Form' : 'Post Update'}
+            {isPosting ? 'Close' : 'Cheer Team'}
           </button>
         </div>
       </div>
 
+      {/* Manual Cheer / Broadcast Post Form */}
       {isPosting && (
-        <form onSubmit={handlePostNews} className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+        <form onSubmit={handlePostNews} className="p-3.5 rounded-xl bg-slate-950/90 border border-slate-800 space-y-2.5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
             <div className="md:col-span-2">
-              <label className="text-[11px] font-semibold text-slate-400 block mb-1">Headline</label>
               <input
                 type="text"
-                placeholder="e.g. Approved Q1 marketing initiative or team promotion"
+                placeholder="Give a shoutout or announce a win (e.g. Great job team closing 3 deals today!)"
                 value={postForm.title}
                 onChange={(e) => setPostForm({ ...postForm, title: e.target.value })}
                 className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400"
@@ -153,85 +212,109 @@ export default function DepartmentNewsfeed({
               />
             </div>
             <div>
-              <label className="text-[11px] font-semibold text-slate-400 block mb-1">Category</label>
               <select
                 value={postForm.category}
                 onChange={(e) => setPostForm({ ...postForm, category: e.target.value as any })}
                 className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200"
               >
-                <option value="Announcement">General Announcement</option>
-                <option value="Level Up">Level Up / XP Milestone</option>
-                <option value="Promotion">Staff Promotion</option>
+                <option value="Announcement">Positive Shoutout</option>
                 <option value="Deal Closed">Commercial Deal Won</option>
-                <option value="Invoice Paid">Invoice Paid & Settled</option>
-                <option value="Maternity / Leave">Maternity / Extended Leave</option>
+                <option value="Level Up">XP Milestone Reached</option>
+                <option value="Promotion">Promotion Celebration</option>
+                <option value="Invoice Paid">Invoice Paid / Cash In</option>
+                <option value="Maternity / Leave">Team Welcome / Well Wishes</option>
               </select>
             </div>
           </div>
 
-          <div>
-            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Context / Details</label>
-            <textarea
-              rows={2}
-              placeholder="Additional details, scope, or notes for the team..."
-              value={postForm.content}
-              onChange={(e) => setPostForm({ ...postForm, content: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400"
-            />
-          </div>
-
           <div className="flex items-center justify-between pt-1">
-            <label className="inline-flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+            <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
               <input
                 type="checkbox"
                 checked={postForm.isCompanyWide}
                 onChange={(e) => setPostForm({ ...postForm, isCompanyWide: e.target.checked })}
                 className="rounded border-slate-700 bg-slate-900 text-amber-500"
               />
-              <span>Broadcast Company-Wide</span>
+              <span>Share across whole company</span>
             </label>
 
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition"
             >
-              <Send className="w-3.5 h-3.5" /> Broadcast News (+15 XP)
+              <Send className="w-3.5 h-3.5" /> Post Cheer (+15 XP)
             </button>
           </div>
         </form>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 max-h-72 overflow-y-auto pr-1">
-        {filteredNews.map((item) => (
-          <div
-            key={item.id}
-            className="p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/60 flex flex-col justify-between hover:border-slate-700 transition"
-          >
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1 text-[10px] font-semibold font-mono text-slate-400 uppercase">
-                  {getCategoryIcon(item.category)}
-                  {item.category}
-                </span>
-                <span className={`text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded border ${item.badgeColor || 'border-slate-800 text-slate-400'}`}>
-                  {item.department}
+      {/* LINEAR HORIZONTAL CAROUSEL */}
+      <div 
+        ref={scrollRef}
+        className="flex gap-3 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent snap-x snap-mandatory"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
+        {filteredNews.map((item) => {
+          const reactions = item.reactions || {};
+
+          return (
+            <div
+              key={item.id}
+              className="min-w-[320px] max-w-[360px] flex-shrink-0 snap-start p-3.5 rounded-xl border border-slate-800/90 bg-slate-950/70 hover:border-amber-500/40 transition flex flex-col justify-between space-y-2.5 shadow-sm"
+            >
+              <div>
+                <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/60 mb-2">
+                  <span className="flex items-center gap-1 text-[10px] font-semibold font-mono text-slate-300">
+                    {getCategoryIcon(item.category)}
+                    <span>{item.category}</span>
+                  </span>
+                  <span className={`text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded border ${item.badgeColor || 'border-slate-800 text-slate-400'}`}>
+                    {item.department}
+                  </span>
+                </div>
+
+                <h4 className="font-semibold text-xs text-slate-100 leading-snug">{item.title}</h4>
+                {item.content && (
+                  <p className="text-[11px] text-slate-400 leading-relaxed mt-1 line-clamp-2">{item.content}</p>
+                )}
+              </div>
+
+              {/* Reaction Emojis & Stamp */}
+              <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between">
+                {/* Emoji Pickers */}
+                <div className="flex items-center gap-1">
+                  {EMOJI_OPTIONS.map(({ emoji }) => {
+                    const count = reactions[emoji] || 0;
+                    return (
+                      <button
+                        key={emoji}
+                        onClick={() => handleAddReaction(item, emoji)}
+                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[11px] transition ${
+                          count > 0
+                            ? 'bg-amber-500/15 border border-amber-500/30 text-amber-200'
+                            : 'hover:bg-slate-800 border border-transparent text-slate-400'
+                        }`}
+                        title={`React with ${emoji} (+5 XP)`}
+                      >
+                        <span>{emoji}</span>
+                        {count > 0 && <span className="font-mono text-[9px] font-bold ml-0.5">{count}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <span className="text-[10px] text-slate-500 font-mono">
+                  {item.actor}
                 </span>
               </div>
-              <h4 className="font-semibold text-xs text-slate-100 leading-snug">{item.title}</h4>
-              <p className="text-[11px] text-slate-400 leading-relaxed">{item.content}</p>
             </div>
-
-            <div className="flex items-center justify-between pt-2.5 mt-2 border-t border-slate-800/60 text-[10px] text-slate-500 font-mono">
-              <span>By {item.actor}</span>
-              <span>{item.createdAt.slice(0, 10)}</span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
 
         {filteredNews.length === 0 && (
-          <div className="col-span-full py-8 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl space-y-1">
-            <p className="font-semibold text-slate-400">Workspace Activity Stream Ready</p>
-            <p className="text-[11px]">Real company milestones (deals closed, settled invoices, promotions, level-ups) will appear here live as your team works.</p>
+          <div className="w-full py-4 text-center text-xs text-slate-400 border border-dashed border-slate-800/80 rounded-xl flex items-center justify-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <span>Today's slate is fresh for {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}. As your team works, deals won, invoices paid, and shoutouts will glide along here!</span>
           </div>
         )}
       </div>
