@@ -8,9 +8,9 @@ import {
   BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin,
   Cloud, CloudOff, Hash, Users, Download, FileSpreadsheet, AlertTriangle, AlertCircle, Timer,
   Target, RotateCcw, Laptop, Briefcase, HeartHandshake, Megaphone, Wrench, PoundSterling, Crown,
-  Lock, Phone, PhoneCall, Upload
+  Lock, Phone, PhoneCall, Upload, Flame, Sparkles
 } from 'lucide-react';
-import { db, Contact, ProjectTask, StoredTemplate, AuditRecord, DepartmentRole, EmployeeProfile } from '../packages/storage/src/db';
+import { db, Contact, ProjectTask, StoredTemplate, AuditRecord, DepartmentRole, EmployeeProfile, NewsItem } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
 import { syncTaskToGoogleCalendar } from '../packages/storage/src/calendarSync';
 import { logAuditEvent } from '../packages/storage/src/auditLogger';
@@ -20,12 +20,13 @@ import { resolveUserWorkspace, UserWorkspaceConfig } from '../packages/storage/s
 import CommandPalette from '../components/CommandPalette';
 import HealthWizard from '../components/HealthWizard';
 import DealDetailDrawer from '../components/DealDetailDrawer';
-import EmployeeHub from '../components/EmployeeHub';
+import EmployeeHub, { computeProgression } from '../components/EmployeeHub';
 import FinanceDesk from '../components/FinanceDesk';
 import OrgRosterDesk from '../components/OrgRosterDesk';
 import TelephonyDesk from '../components/TelephonyDesk';
 import MailchimpDesk from '../components/MailchimpDesk';
 import DataImportWizard from '../components/DataImportWizard';
+import DepartmentNewsfeed from '../components/DepartmentNewsfeed';
 
 declare global {
   interface Window {
@@ -159,6 +160,8 @@ export default function Dashboard() {
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [customTemplates, setCustomTemplates] = useState<StoredTemplate[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditRecord[]>([]);
+  const [currentProfile, setCurrentProfile] = useState<EmployeeProfile | null>(null);
+
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [lastSyncedSheetId, setLastSyncedSheetId] = useState<string | null>(null);
@@ -243,6 +246,12 @@ export default function Dashboard() {
     setCustomTemplates(storedTpls);
     setAuditLogs(storedAudits);
 
+    let activeUser = roster.find(p => p.name.toLowerCase() === senderName.toLowerCase());
+    if (!activeUser && roster.length > 0) {
+      activeUser = roster[0];
+    }
+    if (activeUser) setCurrentProfile(activeUser);
+
     const savedDept = localStorage.getItem('biscuit_crm_user_department') as DepartmentRole;
     if (roster.length <= 1) {
       setDepartment('MD');
@@ -261,16 +270,49 @@ export default function Dashboard() {
   const awardRepXP = async (amount: number, reason: string) => {
     try {
       const allProfiles = await db.employees.toArray();
-      const profile = allProfiles.find(p => p.name.toLowerCase() === senderName.toLowerCase());
-      if (profile && profile.id) {
-        const step = (profile as any)?.tier === 'Staff' ? 200 : 250;
-        const maxLvl = (profile as any)?.tier === 'Staff' ? 10 : 5;
-        const updatedXP = profile.xp + amount;
-        const updatedLevel = Math.min(maxLvl, Math.floor(updatedXP / step) + 1);
-        await db.employees.update(profile.id, { xp: updatedXP, level: updatedLevel });
+      let profile = allProfiles.find(p => p.name.toLowerCase() === senderName.toLowerCase());
+
+      if (!profile) {
+        const newProf: EmployeeProfile = {
+          name: senderName,
+          role: 'Managing Director',
+          department: department,
+          tier: department === 'MD' ? 'Director' : 'Staff',
+          status: 'Active',
+          xp: 200,
+          level: 2,
+          dealsClosed: 0,
+          handoverActive: false,
+        };
+        const id = await db.employees.add(newProf);
+        profile = { ...newProf, id };
+      }
+
+      const prevProg = computeProgression((profile as any)?.tier || 'Staff', profile.xp);
+      const updatedXP = profile.xp + amount;
+      const nextProg = computeProgression((profile as any)?.tier || 'Staff', updatedXP);
+
+      await db.employees.update(profile.id!, {
+        xp: updatedXP,
+        level: nextProg.level,
+      });
+
+      setCurrentProfile({ ...profile, xp: updatedXP, level: nextProg.level });
+
+      // If user leveled up, post announcement across the company
+      if (nextProg.level > prevProg.level) {
+        await db.newsFeed.add({
+          title: `Level Up: ${profile.name} achieved Level ${nextProg.level}!`,
+          content: `${profile.name} advanced to ${nextProg.title} with ${updatedXP} XP.`,
+          category: 'Level Up',
+          department: 'Company-Wide',
+          actor: 'System XP Engine',
+          badgeColor: 'border-amber-500/30 text-amber-300 bg-amber-500/10',
+          createdAt: new Date().toISOString(),
+        });
       }
     } catch (e) {
-      console.warn('XP update deferred:', e);
+      console.warn('XP increment deferred:', e);
     }
   };
 
@@ -376,7 +418,6 @@ export default function Dashboard() {
     setViewMode(DEPARTMENT_CONFIG[dept].defaultTab);
   };
 
-  // Context-aware manual business intake
   const handleOpenAddModal = (presetStage?: StageType) => {
     let defaultStage: StageType = 'Prospect';
     if (presetStage) {
@@ -460,6 +501,19 @@ export default function Dashboard() {
     });
 
     await awardRepXP(50, `Advanced deal to ${nextStage}`);
+
+    // If deal won into Customer Service, broadcast announcement
+    if (nextStage === 'Customer Service') {
+      await db.newsFeed.add({
+        title: `Deal Won: ${contact.company || contact.name} onboarded!`,
+        content: `${senderName} closed contract for ${contact.company || contact.name} [${contact.accountNumber}].`,
+        category: 'Deal Closed',
+        department: 'Sales',
+        actor: senderName,
+        badgeColor: 'border-sky-500/30 text-sky-300 bg-sky-500/10',
+        createdAt: now,
+      });
+    }
 
     authenticateToken().then(async (t) => {
       if (folderId) {
@@ -587,7 +641,6 @@ export default function Dashboard() {
   const isMarketing = department === 'Marketing';
   const isOperations = department === 'Operations';
   
-  // Can manually add a business: Sales, Marketing, Customer Service (Operations), MD
   const canAddBusiness = isMD || isSales || isMarketing || isOperations;
 
   const allowedTabs = DEPARTMENT_CONFIG[department].allowedTabs;
@@ -605,10 +658,16 @@ export default function Dashboard() {
     })),
   ];
 
+  // Progression calculation for dashboard XP header
+  const userTier = currentProfile?.tier || (isMD ? 'Director' : 'Staff');
+  const userXP = currentProfile?.xp || 200;
+  const prog = computeProgression(userTier, userXP);
+  const progressPercent = Math.min(100, Math.max(0, ((userXP - prog.baseXP) / (prog.nextXP - prog.baseXP)) * 100));
+
   return (
     <main className="max-w-[1540px] mx-auto px-6 py-8">
       {/* Top Header */}
-      <header className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-slate-800 pb-5 mb-6 gap-4">
+      <header className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-slate-800 pb-5 mb-5 gap-4">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
@@ -686,7 +745,66 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Role Action & Dynamic Persistence Banner */}
+      {/* DASHBOARD EXPERIENCE (XP) BAR & LEVEL PROGRESSION */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-slate-950 border border-slate-800 shadow-md mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="w-12 h-12 rounded-xl bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-center text-amber-400 font-extrabold text-lg shadow-inner">
+              {senderName.charAt(0)}
+            </div>
+            <span className="absolute -bottom-1 -right-1 px-1 py-0.2 rounded-full text-[9px] font-mono font-bold bg-amber-500 text-slate-950">
+              Lv.{prog.level}
+            </span>
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-slate-100 text-sm">{senderName}</span>
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${prog.badge}`}>
+                {prog.title}
+              </span>
+              <span className="text-[10px] font-mono text-slate-400 bg-slate-950 border border-slate-800 px-1.5 py-0.5 rounded">
+                {userTier} ({prog.isLeadership ? '5-Level Ladder' : '10-Level System'})
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5">
+              <span>{department} Division</span>
+              <span>&bull;</span>
+              <span className="text-amber-400 font-mono font-semibold">{userXP} Total XP Earned</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="w-full md:w-80 space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-semibold text-slate-300 flex items-center gap-1.5">
+              <Flame className="w-3.5 h-3.5 text-amber-500 animate-pulse" /> Rep Experience Ladder
+            </span>
+            <span className="font-mono text-amber-400 font-bold text-[11px]">
+              {userXP} / {prog.nextXP} XP
+            </span>
+          </div>
+          <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+            <div 
+              className="bg-gradient-to-r from-amber-500 via-amber-400 to-emerald-400 h-full rounded-full transition-all duration-700"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+          <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono">
+            <span>Level {prog.level} of {prog.maxLevels}</span>
+            <span>{Math.max(0, prog.nextXP - userXP)} XP to Next Level</span>
+          </div>
+        </div>
+      </div>
+
+      {/* DEPARTMENT & COMPANY-WIDE NEWSFEED */}
+      <DepartmentNewsfeed
+        currentDepartment={department}
+        currentUser={senderName}
+        onAwardXP={awardRepXP}
+      />
+
+      {/* Persistence & Action Toolbar */}
       <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-3">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -704,7 +822,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Action Buttons: Add Business, Migrate, Sync */}
+        {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
           {canAddBusiness && (
             <button

@@ -15,7 +15,7 @@ export interface Contact {
   dealValue?: number;
   invoiceStatus?: 'Pending' | 'Drafted' | 'Issued' | 'Paid';
   mailchimpStatus?: 'Synced' | 'Pending' | 'Not Synced';
-  lastCallDuration?: number; // seconds
+  lastCallDuration?: number;
   lastCallTimestamp?: string;
   accountManager?: string;
   billingAddress?: string;
@@ -62,7 +62,7 @@ export interface LeaveRequest {
   id?: number;
   employeeName: string;
   department: DepartmentRole;
-  leaveType: 'Annual Leave' | 'Sick Leave' | 'Compassionate' | 'Training';
+  leaveType: 'Annual Leave' | 'Sick Leave' | 'Compassionate' | 'Training' | 'Maternity / Paternity';
   startDate: string;
   endDate: string;
   days: number;
@@ -86,6 +86,17 @@ export interface EmployeeProfile {
   handoverActive: boolean;
   handoverTo?: string;
   handoverNotes?: string;
+}
+
+export interface NewsItem {
+  id?: number;
+  title: string;
+  content: string;
+  category: 'Level Up' | 'Promotion' | 'Invoice Paid' | 'Deal Closed' | 'Maternity / Leave' | 'Announcement';
+  department: DepartmentRole | 'Company-Wide';
+  actor: string;
+  badgeColor?: string;
+  createdAt: string;
 }
 
 export interface OutboxMutation {
@@ -112,18 +123,20 @@ export class BiscuitDatabase extends Dexie {
   whiteboardNotes!: Table<WhiteboardNote, number>;
   leaveRequests!: Table<LeaveRequest, number>;
   employees!: Table<EmployeeProfile, number>;
+  newsFeed!: Table<NewsItem, number>;
   outbox!: Table<OutboxMutation, number>;
   auditLogs!: Table<AuditRecord, number>;
 
   constructor() {
     super('BiscuitDatabase');
-    this.version(10).stores({
+    this.version(11).stores({
       contacts: '++id, accountNumber, name, company, crn, stage, accountManager, invoiceStatus, mailchimpStatus, phone, synced, updatedAt',
       projects: '++id, title, companyName, assignee, department, synced, updatedAt',
       templates: '++id, templateKey, category, updatedAt',
       whiteboardNotes: '++id, author, color, createdAt',
       leaveRequests: '++id, employeeName, department, status, startDate, endDate',
       employees: '++id, name, department, tier, status, xp, level',
+      newsFeed: '++id, category, department, actor, createdAt',
       outbox: '++id, type, table, timestamp',
       auditLogs: '++id, timestamp, actor, action, entityId',
     });
