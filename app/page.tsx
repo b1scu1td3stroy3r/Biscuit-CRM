@@ -5,10 +5,10 @@ import {
   ShieldCheck, Zap, Database, Building2, Calendar as CalendarIcon, 
   FileText, CheckCircle2, Loader2, FolderCheck, Plus, Search, 
   RefreshCw, ExternalLink, ChevronRight, ArrowRight, LayoutGrid, List, Clock,
-  BookOpen, Copy, Mail, Check, UserCheck, Activity
+  BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud
 } from 'lucide-react';
 import { db, Contact, ProjectTask, StoredTemplate } from '../packages/storage/src/db';
-import { syncOutboxToGoogleSheets } from '../packages/storage/src/sheetsSync';
+import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
 import { syncTaskToGoogleCalendar } from '../packages/storage/src/calendarSync';
 import { logAuditEvent } from '../packages/storage/src/auditLogger';
 import { DEFAULT_TEMPLATES, replaceTokens, TemplateItem } from '../packages/templates/src/templates';
@@ -39,6 +39,7 @@ export default function Dashboard() {
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [customTemplates, setCustomTemplates] = useState<StoredTemplate[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
   const [lastSyncedSheetId, setLastSyncedSheetId] = useState<string | null>(null);
   const [auditSheetId, setAuditSheetId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'kanban' | 'table' | 'gantt' | 'templates'>('kanban');
@@ -160,6 +161,21 @@ export default function Dashboard() {
     }
   };
 
+  const handlePullFromSheets = async () => {
+    setIsPulling(true);
+    try {
+      const activeToken = await authenticateToken();
+      const res = await pullContactsFromGoogleSheet(activeToken, folderId);
+      if (res.sheetId) setLastSyncedSheetId(res.sheetId);
+      await loadData();
+    } catch (err) {
+      console.error(err);
+      alert('Pull failed. Please verify spreadsheet exists on Drive.');
+    } finally {
+      setIsPulling(false);
+    }
+  };
+
   const advanceStage = async (contact: Contact) => {
     const currentIndex = PIPELINE_STAGES.findIndex(s => s.key === contact.stage);
     if (currentIndex >= PIPELINE_STAGES.length - 1) return;
@@ -180,7 +196,6 @@ export default function Dashboard() {
       timestamp: Date.now(),
     });
 
-    // Fire non-blocking audit logging
     authenticateToken().then(t => {
       logAuditEvent(t, folderId, {
         timestamp: now,
@@ -219,7 +234,7 @@ export default function Dashboard() {
         actor: senderName,
         action: 'SCHEDULE_MILESTONE',
         entityId: `Calendar_${eventId}`,
-        details: `Created project milestone "${newTask.title}" for ${newTask.companyName} (${newTask.startDate} to ${newTask.endDate})`,
+        details: `Created project milestone "${newTask.title}" for ${newTask.companyName}`,
       });
 
       setIsTaskModalOpen(false);
@@ -302,7 +317,7 @@ export default function Dashboard() {
         actor: senderName,
         action: 'CREATE_CONTACT',
         entityId: `Contact_${newId}`,
-        details: `Intake contact ${newContact.name} at ${newContact.company} (CRN: ${newContact.crn || 'N/A'})`,
+        details: `Intake contact ${newContact.name} at ${newContact.company}`,
       }).then(() => {
         const cachedAudit = localStorage.getItem('biscuit_crm_audit_sheet_id');
         if (cachedAudit) setAuditSheetId(cachedAudit);
@@ -432,6 +447,17 @@ export default function Dashboard() {
         </div>
 
         <div className="flex items-center gap-3">
+          {contacts.length === 0 && (
+            <button
+              onClick={handlePullFromSheets}
+              disabled={isPulling}
+              className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2 rounded-lg text-xs transition shadow-md shadow-emerald-600/20"
+            >
+              <DownloadCloud className={`w-3.5 h-3.5 ${isPulling ? 'animate-spin' : ''}`} />
+              Pull from Sheets
+            </button>
+          )}
+
           {hasUnsynced && (
             <button
               onClick={handleSyncToSheets}
