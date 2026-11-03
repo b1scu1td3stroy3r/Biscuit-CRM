@@ -28,18 +28,26 @@ export default function DealDetailDrawer({
     if (!contact) return;
 
     const fetchDetails = async () => {
-      const allAudits = await db.audit.toArray();
-      const entityId = `Contact_${contact.id}`;
-      const logs = allAudits.filter(
-        (a) => a.entityId === entityId || (a.details && a.details.includes(contact.name))
-      );
-      setAuditLogs(logs.reverse());
+      try {
+        const allAudits = await db.auditLogs.toArray();
+        const entityId = `Contact_${contact.id}`;
+        const logs = allAudits.filter(
+          (a: any) => a.entityId === entityId || (a.details && a.details.includes(contact.name))
+        );
+        setAuditLogs(logs.reverse());
+      } catch (e) {
+        console.warn('Could not read audit logs:', e);
+      }
 
-      const allTasks = await db.projects.toArray();
-      const matchingTasks = allTasks.filter(
-        (t) => t.companyName?.toLowerCase() === contact.company?.toLowerCase()
-      );
-      setRelatedTasks(matchingTasks);
+      try {
+        const allTasks = await db.projects.toArray();
+        const matchingTasks = allTasks.filter(
+          (t) => t.companyName?.toLowerCase() === contact.company?.toLowerCase()
+        );
+        setRelatedTasks(matchingTasks);
+      } catch (e) {
+        console.warn('Could not read project tasks:', e);
+      }
     };
 
     fetchDetails();
@@ -205,7 +213,7 @@ export default function DealDetailDrawer({
               </div>
             )}
 
-            {/* Tab 2: History & Stage Changes */}
+            {/* Tab 2: Stage Transitions & Audit Trail */}
             {activeTab === 'history' && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
