@@ -5,7 +5,7 @@ import {
   ShieldCheck, Zap, Database, Building2, Calendar as CalendarIcon, 
   FileText, CheckCircle2, Loader2, FolderCheck, Plus, Search, 
   RefreshCw, ExternalLink, ChevronRight, ArrowRight, LayoutGrid, List, Clock,
-  BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud
+  BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye
 } from 'lucide-react';
 import { db, Contact, ProjectTask, StoredTemplate } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
@@ -437,7 +437,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Sync Banner */}
+      {/* Persistence Banner */}
       <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 flex items-center justify-between mb-8 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -547,12 +547,13 @@ export default function Dashboard() {
                     <div 
                       key={c.id} 
                       onClick={() => setSelectedDealForDrawer(c)}
-                      className="p-3.5 rounded-lg border border-slate-800 bg-slate-900/90 hover:border-amber-500/60 transition shadow-sm space-y-2.5 cursor-pointer group"
+                      className="p-3.5 rounded-lg border border-slate-800 bg-slate-900/90 hover:border-amber-500/70 transition shadow-sm space-y-2.5 cursor-pointer group"
                     >
                       <div className="flex items-start justify-between">
                         <div>
-                          <div className="font-semibold text-slate-100 text-sm leading-tight group-hover:text-amber-400 transition-colors">
-                            {c.name}
+                          <div className="font-semibold text-slate-100 text-sm leading-tight group-hover:text-amber-400 transition-colors flex items-center gap-1.5">
+                            <span>{c.name}</span>
+                            <Eye className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 text-amber-400 transition-opacity" />
                           </div>
                           <div className="text-[11px] text-slate-400 mt-0.5">{c.company}</div>
                         </div>
@@ -571,13 +572,19 @@ export default function Dashboard() {
 
                       <div className="text-[11px] text-slate-400 truncate">{c.email}</div>
 
+                      <div className="pt-1 flex items-center justify-between border-t border-slate-800/60">
+                        <span className="text-[10px] font-medium text-amber-400/80 hover:text-amber-300">
+                          View History & Details →
+                        </span>
+                      </div>
+
                       {!isLastCol && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             advanceStage(c);
                           }}
-                          className="w-full mt-2 inline-flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700/60 transition"
+                          className="w-full mt-1 inline-flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700/60 transition"
                         >
                           <span>Move Next</span>
                           <ChevronRight className="w-3.5 h-3.5 text-amber-400" />
@@ -846,76 +853,6 @@ export default function Dashboard() {
         onClose={() => setIsHealthOpen(false)}
         folderId={folderId}
       />
-
-      {/* Modal: Create New Template */}
-      {isNewTemplateModalOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
-              <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-amber-400" /> Create Custom Battlecard / Template
-              </h3>
-              <button onClick={() => setIsNewTemplateModalOpen(false)} className="text-slate-400 hover:text-slate-200">✕</button>
-            </div>
-
-            <form onSubmit={handleSaveCustomTemplate} className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">Template Title</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Invoicing & Final Signoff"
-                  value={newTemplateForm.title}
-                  onChange={(e) => setNewTemplateForm({ ...newTemplateForm, title: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">Email Subject Line</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Agreement documents for {{company}}"
-                  value={newTemplateForm.subject}
-                  onChange={(e) => setNewTemplateForm({ ...newTemplateForm, subject: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-slate-400">Template Body</label>
-                  <span className="text-[10px] text-slate-500 font-mono">Tokens: &#123;&#123;contact_name&#125;&#125;, &#123;&#123;company&#125;&#125;, &#123;&#123;crn&#125;&#125;, &#123;&#123;sender_name&#125;&#125;</span>
-                </div>
-                <textarea
-                  rows={6}
-                  placeholder="Hi {{contact_name}},&#10;&#10;Here are the details for {{company}}...&#10;&#10;Best,&#10;{{sender_name}}"
-                  value={newTemplateForm.body}
-                  onChange={(e) => setNewTemplateForm({ ...newTemplateForm, body: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-100 leading-relaxed"
-                  required
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsNewTemplateModalOpen(false)}
-                  className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm transition"
-                >
-                  Save to Vault
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Modal: UK Companies House Lookup */}
       {isModalOpen && (
