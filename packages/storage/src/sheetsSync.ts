@@ -5,19 +5,31 @@ const STORAGE_KEY_SHEET_ID = 'biscuit_crm_pipeline_sheet_id';
 export async function pullContactsFromGoogleSheet(accessToken: string, folderId: string) {
   let sheetId = localStorage.getItem(STORAGE_KEY_SHEET_ID);
 
-  // If local storage has no cached sheet ID, query Drive for Biscuit_CRM_Pipeline_Master
+  // If not yet stored on this origin, prompt once for the existing Sheet ID or query Drive
   if (!sheetId) {
-    const query = encodeURIComponent(`name = 'Biscuit_CRM_Pipeline_Master' and trashed = false`);
-    const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    const searchData = await searchRes.json();
-    if (searchData.files && searchData.files.length > 0) {
-      sheetId = searchData.files[0].id;
-      localStorage.setItem(STORAGE_KEY_SHEET_ID, sheetId as string);
-    } else {
-      return { importedCount: 0, sheetId: null };
+    try {
+      const query = encodeURIComponent(`name = 'Biscuit_CRM_Pipeline_Master' and trashed = false`);
+      const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const searchData = await searchRes.json();
+      if (searchData.files && searchData.files.length > 0) {
+        sheetId = searchData.files[0].id;
+      }
+    } catch (e) {
+      console.warn('Drive search restricted:', e);
     }
+
+    if (!sheetId) {
+      const manualId = window.prompt(
+        'Paste your Biscuit_CRM_Pipeline_Master Google Sheet ID (from the sheet URL between /d/ and /edit):'
+      );
+      if (!manualId || !manualId.trim()) {
+        return { importedCount: 0, sheetId: null };
+      }
+      sheetId = manualId.trim();
+    }
+    localStorage.setItem(STORAGE_KEY_SHEET_ID, sheetId as string);
   }
 
   const res = await fetch(
@@ -25,7 +37,12 @@ export async function pullContactsFromGoogleSheet(accessToken: string, folderId:
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 
-  if (!res.ok) return { importedCount: 0, sheetId };
+  if (!res.ok) {
+    // If the ID was invalid or expired from storage, clear it so user can re-enter
+    localStorage.removeItem(STORAGE_KEY_SHEET_ID);
+    throw new Error('Failed to fetch rows from spreadsheet. Check ID or permissions.');
+  }
+
   const data = await res.json();
   const rows = data.values || [];
   let importedCount = 0;
