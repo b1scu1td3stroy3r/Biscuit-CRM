@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   ShieldCheck, Zap, Database, Building2, Calendar as CalendarIcon, 
   FileText, CheckCircle2, Loader2, FolderCheck, Plus, Search, 
   RefreshCw, ExternalLink, ChevronRight, ArrowRight, LayoutGrid, List, Clock,
-  BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin
+  BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin,
+  CloudCheck, CloudOff
 } from 'lucide-react';
 import { db, Contact, ProjectTask, StoredTemplate } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
@@ -41,6 +42,7 @@ export default function Dashboard() {
   const [customTemplates, setCustomTemplates] = useState<StoredTemplate[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
   const [lastSyncedSheetId, setLastSyncedSheetId] = useState<string | null>(null);
   const [auditSheetId, setAuditSheetId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'kanban' | 'table' | 'gantt' | 'templates'>('kanban');
@@ -88,6 +90,7 @@ export default function Dashboard() {
   });
 
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const SCOPES = [
     'https://www.googleapis.com/auth/drive.file',
@@ -116,25 +119,7 @@ export default function Dashboard() {
     if (cachedAudit) setAuditSheetId(cachedAudit);
   };
 
-  useEffect(() => {
-    loadData();
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setIsCommandOpen((prev) => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  const handleUpdateSenderName = (name: string) => {
-    setSenderName(name);
-    localStorage.setItem('biscuit_crm_sender_name', name);
-  };
-
-  const authenticateToken = (): Promise<string> => {
+  const authenticateToken = useCallback((): Promise<string> => {
     return new Promise((resolve, reject) => {
       if (token) return resolve(token);
       if (!window.google) return reject(new Error('Google library not loaded'));
@@ -150,9 +135,10 @@ export default function Dashboard() {
       });
       client.requestAccessToken();
     });
-  };
+  }, [clientId, token, SCOPES]);
 
-  const handleSyncToSheets = async () => {
+  const handleSyncToSheets = useCallback(async (silent = false) => {
+    if (isSyncing || !navigator.onLine) return;
     setIsSyncing(true);
     try {
       const activeToken = await authenticateToken();
@@ -160,11 +146,53 @@ export default function Dashboard() {
       if (res.sheetId) setLastSyncedSheetId(res.sheetId);
       await loadData();
     } catch (err: any) {
-      console.error(err);
-      alert(`Sync failed: ${err.message || err}`);
+      console.warn('Background sync deferred:', err);
+      if (!silent) alert(`Sync failed: ${err.message || err}`);
     } finally {
       setIsSyncing(false);
     }
+  }, [isSyncing, folderId, authenticateToken]);
+
+  // Debounced Auto-Sync Trigger
+  const triggerDebouncedSync = useCallback(() => {
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    syncTimeoutRef.current = setTimeout(() => {
+      handleSyncToSheets(true);
+    }, 2500);
+  }, [handleSyncToSheets]);
+
+  useEffect(() => {
+    loadData();
+
+    setIsOnline(navigator.onLine);
+    const handleOnline = () => {
+      setIsOnline(true);
+      handleSyncToSheets(true);
+    };
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('keydown', handleKeyDown);
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    };
+  }, [handleSyncToSheets]);
+
+  const handleUpdateSenderName = (name: string) => {
+    setSenderName(name);
+    localStorage.setItem('biscuit_crm_sender_name', name);
   };
 
   const handlePullFromSheets = async () => {
@@ -219,6 +247,7 @@ export default function Dashboard() {
     if (selectedDealForDrawer?.id === contact.id) {
       setSelectedDealForDrawer({ ...contact, stage: nextStage, updatedAt: now });
     }
+    triggerDebouncedSync();
   };
 
   const handleCreateTask = async (e: React.FormEvent) => {
@@ -347,6 +376,7 @@ export default function Dashboard() {
     });
     setIsModalOpen(false);
     await loadData();
+    triggerDebouncedSync();
   };
 
   const handleCopyTemplate = (tpl: { id: string; body: string }) => {
@@ -451,14 +481,35 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Persistence Banner */}
+      {/* Persistence Banner with Automated Background Engine */}
       <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 flex items-center justify-between mb-8 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
             <CheckCircle2 className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-slate-100">Live Workspace Persistence Link</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-slate-100">Live Workspace Persistence Link</h3>
+              
+              {/* Dynamic Sync Status Badge */}
+              {isSyncing ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
+                  <RefreshCw className="w-3 h-3 animate-spin" /> Auto-syncing to Sheets...
+                </span>
+              ) : !isOnline ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-red-500/10 text-red-400 border border-red-500/30">
+                  <CloudOff className="w-3 h-3" /> Offline (Changes Queued)
+                </span>
+              ) : hasUnsynced ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" /> Outbox Queued
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                  <CloudCheck className="w-3 h-3" /> All changes saved
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
               <FolderCheck className="w-3.5 h-3.5 text-emerald-400" />
               Drive Root Folder ID: <code className="bg-slate-800 px-1.5 py-0.5 rounded text-slate-300 font-mono text-[11px]">{folderId}</code>
@@ -480,12 +531,13 @@ export default function Dashboard() {
 
           {hasUnsynced && (
             <button
-              onClick={handleSyncToSheets}
+              onClick={() => handleSyncToSheets(false)}
               disabled={isSyncing}
-              className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-2 rounded-lg text-xs transition shadow-md shadow-indigo-600/20"
+              className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition"
+              title="Force manual sync now"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-              Flush Outbox to Drive
+              Force Sync Now
             </button>
           )}
 
@@ -859,7 +911,10 @@ export default function Dashboard() {
         isOpen={Boolean(selectedDealForDrawer)}
         onClose={() => setSelectedDealForDrawer(null)}
         onAdvanceStage={advanceStage}
-        onContactUpdated={loadData}
+        onContactUpdated={() => {
+          loadData();
+          triggerDebouncedSync();
+        }}
       />
 
       {/* Global Command Palette Component */}
