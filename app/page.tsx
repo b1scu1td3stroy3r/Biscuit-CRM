@@ -7,7 +7,8 @@ import {
   RefreshCw, ExternalLink, ChevronRight, ChevronLeft, ArrowRight, LayoutGrid, List, Clock,
   BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin,
   Cloud, CloudOff, Hash, Users, Download, FileSpreadsheet, AlertTriangle, AlertCircle, Timer,
-  Target, RotateCcw, Laptop, Briefcase, HeartHandshake, Megaphone, Wrench
+  Target, RotateCcw, Laptop, Briefcase, HeartHandshake, Megaphone, Wrench, PoundSterling, Crown,
+  Lock
 } from 'lucide-react';
 import { db, Contact, ProjectTask, StoredTemplate, AuditRecord, DepartmentRole } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
@@ -19,6 +20,7 @@ import CommandPalette from '../components/CommandPalette';
 import HealthWizard from '../components/HealthWizard';
 import DealDetailDrawer from '../components/DealDetailDrawer';
 import EmployeeHub from '../components/EmployeeHub';
+import FinanceDesk from '../components/FinanceDesk';
 
 declare global {
   interface Window {
@@ -27,57 +29,68 @@ declare global {
   }
 }
 
-const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; color: string; defaultTab: any }> = {
-  Sales: { label: 'Sales & Commercial', icon: Briefcase, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20', defaultTab: 'kanban' },
-  Operations: { label: 'Operations & Logistics', icon: Wrench, color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20', defaultTab: 'gantt' },
-  HR: { label: 'People & HR', icon: HeartHandshake, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', defaultTab: 'hub' },
-  Marketing: { label: 'Growth & Marketing', icon: Megaphone, color: 'text-purple-400 bg-purple-500/10 border-purple-500/20', defaultTab: 'templates' },
-  IT: { label: 'IT & Infrastructure', icon: Laptop, color: 'text-sky-400 bg-sky-500/10 border-sky-500/20', defaultTab: 'table' },
+type ViewTabType = 'kanban' | 'table' | 'gantt' | 'templates' | 'hub' | 'finance';
+
+const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; color: string; defaultTab: ViewTabType; allowedTabs: ViewTabType[] }> = {
+  MD: { 
+    label: 'Managing Director (Executive All-Access)', 
+    icon: Crown, 
+    color: 'text-amber-400 bg-amber-500/10 border-amber-500/30', 
+    defaultTab: 'kanban',
+    allowedTabs: ['kanban', 'table', 'gantt', 'templates', 'hub', 'finance']
+  },
+  Sales: { 
+    label: 'Sales & Commercial', 
+    icon: Briefcase, 
+    color: 'text-amber-400 bg-amber-500/10 border-amber-500/20', 
+    defaultTab: 'kanban',
+    allowedTabs: ['kanban', 'templates']
+  },
+  Operations: { 
+    label: 'Operations & Logistics', 
+    icon: Wrench, 
+    color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20', 
+    defaultTab: 'gantt',
+    allowedTabs: ['gantt']
+  },
+  HR: { 
+    label: 'People & HR', 
+    icon: HeartHandshake, 
+    color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', 
+    defaultTab: 'hub',
+    allowedTabs: ['hub']
+  },
+  Marketing: { 
+    label: 'Growth & Marketing', 
+    icon: Megaphone, 
+    color: 'text-purple-400 bg-purple-500/10 border-purple-500/20', 
+    defaultTab: 'templates',
+    allowedTabs: ['templates']
+  },
+  IT: { 
+    label: 'IT & Infrastructure', 
+    icon: Laptop, 
+    color: 'text-sky-400 bg-sky-500/10 border-sky-500/20', 
+    defaultTab: 'table',
+    allowedTabs: ['table']
+  },
+  Finance: { 
+    label: 'Finance & Invoicing', 
+    icon: PoundSterling, 
+    color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', 
+    defaultTab: 'finance',
+    allowedTabs: ['finance', 'table']
+  },
 };
 
 const PIPELINE_STAGES = [
-  { 
-    key: 'Prospect', 
-    label: '0. Cold Prospects', 
-    desc: 'Target list for cold calling (never bought)',
-    color: 'border-slate-500/40 text-slate-300 bg-slate-500/10' 
-  },
-  { 
-    key: 'Lead', 
-    label: '1. Inbound Leads', 
-    desc: 'Qualified form submissions & warm intros',
-    color: 'border-amber-500/40 text-amber-400 bg-amber-500/10' 
-  },
-  { 
-    key: 'Sales', 
-    label: '2. Active Sales', 
-    desc: 'Discovery, demos & commercial negotiation',
-    color: 'border-sky-500/40 text-sky-400 bg-sky-500/10' 
-  },
-  { 
-    key: 'Procurement', 
-    label: '3. Procurement', 
-    desc: 'Legal agreements & vendor quotes',
-    color: 'border-purple-500/40 text-purple-400 bg-purple-500/10' 
-  },
-  { 
-    key: 'Logistics', 
-    label: '4. Logistics', 
-    desc: 'Dispatch SLA & delivery fulfillment',
-    color: 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10' 
-  },
-  { 
-    key: 'Customer Service', 
-    label: '5. Retention / CS', 
-    desc: 'Onboarding follow-up & active support',
-    color: 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' 
-  },
-  { 
-    key: 'Winback', 
-    label: '6. Win-Backs', 
-    desc: 'Cold deals or inactive > 12 months',
-    color: 'border-rose-500/40 text-rose-400 bg-rose-500/10' 
-  },
+  { key: 'Prospect', label: '0. Cold Prospects', desc: 'Target list for cold calling (never bought)', color: 'border-slate-500/40 text-slate-300 bg-slate-500/10' },
+  { key: 'Lead', label: '1. Inbound Leads', desc: 'Qualified form submissions & warm intros', color: 'border-amber-500/40 text-amber-400 bg-amber-500/10' },
+  { key: 'Sales', label: '2. Active Sales', desc: 'Discovery, demos & commercial negotiation', color: 'border-sky-500/40 text-sky-400 bg-sky-500/10' },
+  { key: 'Procurement', label: '3. Procurement', desc: 'Legal agreements & vendor quotes', color: 'border-purple-500/40 text-purple-400 bg-purple-500/10' },
+  { key: 'Logistics', label: '4. Logistics', desc: 'Dispatch SLA & delivery fulfillment', color: 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10' },
+  { key: 'Customer Service', label: '5. Retention / CS', desc: 'Onboarding follow-up & active support', color: 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' },
+  { key: 'Winback', label: '6. Win-Backs', desc: 'Cold deals or inactive > 12 months', color: 'border-rose-500/40 text-rose-400 bg-rose-500/10' },
 ] as const;
 
 type StageType = typeof PIPELINE_STAGES[number]['key'];
@@ -97,28 +110,13 @@ function calculateSLAStatus(contact: Contact): SLAStatus {
   let warnDays = 5;
   let breachDays = 10;
 
-  if (contact.stage === 'Prospect') {
-    warnDays = 7;
-    breachDays = 14;
-  } else if (contact.stage === 'Lead') {
-    warnDays = 2;
-    breachDays = 4;
-  } else if (contact.stage === 'Sales') {
-    warnDays = 4;
-    breachDays = 7;
-  } else if (contact.stage === 'Procurement') {
-    warnDays = 5;
-    breachDays = 10;
-  } else if (contact.stage === 'Logistics') {
-    warnDays = 3;
-    breachDays = 5;
-  } else if (contact.stage === 'Customer Service') {
-    warnDays = 14;
-    breachDays = 30;
-  } else if (contact.stage === 'Winback') {
-    warnDays = 30;
-    breachDays = 60;
-  }
+  if (contact.stage === 'Prospect') { warnDays = 7; breachDays = 14; }
+  else if (contact.stage === 'Lead') { warnDays = 2; breachDays = 4; }
+  else if (contact.stage === 'Sales') { warnDays = 4; breachDays = 7; }
+  else if (contact.stage === 'Procurement') { warnDays = 5; breachDays = 10; }
+  else if (contact.stage === 'Logistics') { warnDays = 3; breachDays = 5; }
+  else if (contact.stage === 'Customer Service') { warnDays = 14; breachDays = 30; }
+  else if (contact.stage === 'Winback') { warnDays = 30; breachDays = 60; }
 
   if (diffDays >= breachDays) {
     return {
@@ -194,7 +192,7 @@ function getMilestoneConfigForStage(stage: StageType, companyOrName: string) {
 }
 
 export default function Dashboard() {
-  const [department, setDepartment] = useState<DepartmentRole>('Sales');
+  const [department, setDepartment] = useState<DepartmentRole>('MD');
   const [token, setToken] = useState<string | null>(null);
   const [folderId] = useState<string>('1WK1GE6vGTuS1KGCC607Jdkcc6464YaST');
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -206,7 +204,7 @@ export default function Dashboard() {
   const [isOnline, setIsOnline] = useState(true);
   const [lastSyncedSheetId, setLastSyncedSheetId] = useState<string | null>(null);
   const [auditSheetId, setAuditSheetId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'kanban' | 'table' | 'gantt' | 'templates' | 'hub'>('kanban');
+  const [viewMode, setViewMode] = useState<ViewTabType>('kanban');
 
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isHealthOpen, setIsHealthOpen] = useState(false);
@@ -296,6 +294,7 @@ export default function Dashboard() {
     const savedDept = localStorage.getItem('biscuit_crm_user_department') as DepartmentRole;
     if (savedDept && DEPARTMENT_CONFIG[savedDept]) {
       setDepartment(savedDept);
+      setViewMode(DEPARTMENT_CONFIG[savedDept].defaultTab);
     }
 
     const savedSender = localStorage.getItem('biscuit_crm_sender_name');
@@ -409,21 +408,6 @@ export default function Dashboard() {
   const handleUpdateSenderName = (name: string) => {
     setSenderName(name);
     localStorage.setItem('biscuit_crm_sender_name', name);
-  };
-
-  const handlePullFromSheets = async () => {
-    setIsPulling(true);
-    try {
-      const activeToken = await authenticateToken();
-      const res = await pullContactsFromGoogleSheet(activeToken, folderId);
-      if (res.sheetId) setLastSyncedSheetId(res.sheetId);
-      await loadData();
-    } catch (err: any) {
-      console.error(err);
-      alert(`Sync pull failed: ${err.message || err}`);
-    } finally {
-      setIsPulling(false);
-    }
   };
 
   const advanceStage = async (contact: Contact) => {
@@ -778,10 +762,12 @@ export default function Dashboard() {
 
   const hasUnsynced = contacts.some(c => !c.synced);
   const CurrentDeptIcon = DEPARTMENT_CONFIG[department].icon;
+  const isMD = department === 'MD';
+  const allowedTabs = DEPARTMENT_CONFIG[department].allowedTabs;
 
   return (
     <main className="max-w-[1540px] mx-auto px-6 py-8">
-      {/* Top Header & Department Persona Selector */}
+      {/* Top Header & RBAC Identity Bar */}
       <header className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-slate-800 pb-5 mb-6 gap-4">
         <div>
           <div className="flex items-center gap-3">
@@ -792,33 +778,49 @@ export default function Dashboard() {
               <CurrentDeptIcon className="w-3.5 h-3.5" />
               {DEPARTMENT_CONFIG[department].label}
             </span>
+            {!isMD && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded">
+                <Lock className="w-2.5 h-2.5 text-slate-500" /> Screen Locked
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-400 mt-0.5">Role-Tailored Zero-Storage Operating System</p>
         </div>
 
-        {/* Department Switcher */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-semibold text-slate-400 mr-1">Switch Persona:</span>
-          {(['Sales', 'Operations', 'HR', 'Marketing', 'IT'] as DepartmentRole[]).map((dept) => {
-            const isSelected = department === dept;
-            const Icon = DEPARTMENT_CONFIG[dept].icon;
+        {/* Managing Director Full Persona Switcher (Locked & Hidden from regular personnel) */}
+        {isMD ? (
+          <div className="flex flex-wrap items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-amber-500/30">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider px-2">MD Superuser:</span>
+            {(['MD', 'Sales', 'Operations', 'Finance', 'HR', 'Marketing', 'IT'] as DepartmentRole[]).map((dept) => {
+              const isSelected = department === dept;
+              const Icon = DEPARTMENT_CONFIG[dept].icon;
 
-            return (
-              <button
-                key={dept}
-                onClick={() => handleSelectDepartment(dept)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
-                  isSelected
-                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow'
-                    : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {dept}
-              </button>
-            );
-          })}
-        </div>
+              return (
+                <button
+                  key={dept}
+                  onClick={() => handleSelectDepartment(dept)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                    isSelected
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                >
+                  <Icon className="w-3 h-3" />
+                  {dept}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleSelectDepartment('MD')}
+              className="text-[11px] text-slate-500 hover:text-amber-400 transition flex items-center gap-1"
+            >
+              <Crown className="w-3 h-3" /> Switch to MD Login
+            </button>
+          </div>
+        )}
 
         {/* Global Shortcuts */}
         <div className="flex items-center gap-3">
@@ -841,47 +843,62 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Dynamic View Navigation */}
+      {/* Role-Gated Navigation Tab Bar */}
       <div className="flex bg-slate-900/90 border border-slate-800 rounded-xl p-1 gap-1 mb-6 shadow-sm overflow-x-auto">
-        <button
-          onClick={() => setViewMode('kanban')}
-          className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'kanban' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-        >
-          <LayoutGrid className="w-3.5 h-3.5" /> Pipeline Board
-          {department === 'Sales' && <span className="text-[10px] bg-slate-950 text-amber-300 px-1.5 py-0.5 rounded ml-1">Primary</span>}
-        </button>
+        {(isMD || allowedTabs.includes('kanban')) && (
+          <button
+            onClick={() => setViewMode('kanban')}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'kanban' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <LayoutGrid className="w-3.5 h-3.5" /> Pipeline Board
+          </button>
+        )}
 
-        <button
-          onClick={() => setViewMode('table')}
-          className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'table' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-        >
-          <List className="w-3.5 h-3.5" /> Table View ({contacts.length})
-          {department === 'IT' && <span className="text-[10px] bg-slate-950 text-sky-300 px-1.5 py-0.5 rounded ml-1">Ledger</span>}
-        </button>
+        {(isMD || allowedTabs.includes('finance')) && (
+          <button
+            onClick={() => setViewMode('finance')}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'finance' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <PoundSterling className="w-3.5 h-3.5 text-emerald-400" /> Finance & Billing Desk
+            {department === 'Finance' && <span className="text-[10px] bg-slate-950 text-emerald-300 px-1.5 py-0.5 rounded ml-1">Finance</span>}
+          </button>
+        )}
 
-        <button
-          onClick={() => setViewMode('gantt')}
-          className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'gantt' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-        >
-          <CalendarIcon className="w-3.5 h-3.5" /> Gantt & Milestones ({tasks.length})
-          {department === 'Operations' && <span className="text-[10px] bg-slate-950 text-indigo-300 px-1.5 py-0.5 rounded ml-1">Operations</span>}
-        </button>
+        {(isMD || allowedTabs.includes('table')) && (
+          <button
+            onClick={() => setViewMode('table')}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'table' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <List className="w-3.5 h-3.5" /> Table View ({contacts.length})
+          </button>
+        )}
 
-        <button
-          onClick={() => setViewMode('templates')}
-          className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'templates' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-        >
-          <BookOpen className="w-3.5 h-3.5" /> Template Vault
-          {department === 'Marketing' && <span className="text-[10px] bg-slate-950 text-purple-300 px-1.5 py-0.5 rounded ml-1">Battlecards</span>}
-        </button>
+        {(isMD || allowedTabs.includes('gantt')) && (
+          <button
+            onClick={() => setViewMode('gantt')}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'gantt' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <CalendarIcon className="w-3.5 h-3.5" /> Gantt & Milestones ({tasks.length})
+          </button>
+        )}
 
-        <button
-          onClick={() => setViewMode('hub')}
-          className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'hub' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-        >
-          <Users className="w-3.5 h-3.5" /> Employee Hub & Leave
-          {department === 'HR' && <span className="text-[10px] bg-slate-950 text-emerald-300 px-1.5 py-0.5 rounded ml-1">HR Desk</span>}
-        </button>
+        {(isMD || allowedTabs.includes('templates')) && (
+          <button
+            onClick={() => setViewMode('templates')}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'templates' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <BookOpen className="w-3.5 h-3.5" /> Template Vault
+          </button>
+        )}
+
+        {(isMD || allowedTabs.includes('hub')) && (
+          <button
+            onClick={() => setViewMode('hub')}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'hub' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <Users className="w-3.5 h-3.5" /> Employee Hub & Leave
+          </button>
+        )}
       </div>
 
       {/* Role-Specific Action Banner */}
@@ -892,6 +909,8 @@ export default function Dashboard() {
           </div>
           <div>
             <h3 className="text-xs font-semibold text-slate-200">
+              {department === 'MD' && 'Executive Master Console — Full unconstrained visibility across all 7 operational departments'}
+              {department === 'Finance' && 'Finance & Invoicing Center — Client remittance schedules, VAT records & contract valuations'}
               {department === 'Sales' && 'Commercial Funnel Active — Inbound leads, prospect outreach & deal velocity'}
               {department === 'Operations' && 'Operations Desk — Active SLA fulfillment, supplier delivery windows & calendar sync'}
               {department === 'HR' && 'People & HR Center — Employee XP progression, deal delegations & 28-day statutory leave tracking'}
@@ -906,7 +925,7 @@ export default function Dashboard() {
 
         {/* Tailored Quick Actions */}
         <div className="flex items-center gap-2">
-          {department === 'Sales' && (
+          {(department === 'Sales' || department === 'MD') && (
             <button
               onClick={() => handleOpenAddModal('Prospect')}
               className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-3 py-1.5 rounded-lg text-xs transition"
@@ -915,7 +934,16 @@ export default function Dashboard() {
             </button>
           )}
 
-          {department === 'Operations' && (
+          {department === 'Finance' && (
+            <button
+              onClick={() => exportPipelineToCSV(contacts)}
+              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" /> Export Billing Register
+            </button>
+          )}
+
+          {(department === 'Operations' || department === 'MD') && (
             <button
               onClick={() => setIsTaskModalOpen(true)}
               className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition"
@@ -924,25 +952,7 @@ export default function Dashboard() {
             </button>
           )}
 
-          {department === 'Marketing' && (
-            <button
-              onClick={() => setIsNewTemplateModalOpen(true)}
-              className="inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition"
-            >
-              <Plus className="w-3.5 h-3.5" /> Author New Campaign Pitch
-            </button>
-          )}
-
-          {department === 'HR' && (
-            <button
-              onClick={() => setViewMode('hub')}
-              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition"
-            >
-              <HeartHandshake className="w-3.5 h-3.5" /> Review Leave Requests
-            </button>
-          )}
-
-          {department === 'IT' && (
+          {(department === 'IT' || department === 'MD') && (
             <div className="flex gap-2">
               <button
                 onClick={() => handleSyncToSheets(false)}
@@ -962,8 +972,20 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* View 1: Employee Hub */}
-      {viewMode === 'hub' && (
+      {/* Screen 1: Finance Desk */}
+      {viewMode === 'finance' && (isMD || allowedTabs.includes('finance')) && (
+        <FinanceDesk
+          contacts={contacts}
+          onContactUpdated={() => {
+            loadData();
+            triggerDebouncedSync();
+          }}
+          currentUser={senderName}
+        />
+      )}
+
+      {/* Screen 2: Employee Hub */}
+      {viewMode === 'hub' && (isMD || allowedTabs.includes('hub')) && (
         <EmployeeHub
           currentRepName={senderName}
           contacts={contacts}
@@ -973,8 +995,8 @@ export default function Dashboard() {
         />
       )}
 
-      {/* View 2: 7-Stage Extended Kanban Board */}
-      {viewMode === 'kanban' && (
+      {/* Screen 3: 7-Stage Extended Kanban Board */}
+      {viewMode === 'kanban' && (isMD || allowedTabs.includes('kanban')) && (
         <section className="grid grid-cols-1 md:grid-cols-7 gap-3 mb-8">
           {PIPELINE_STAGES.map((col, idx) => {
             const colContacts = contacts.filter(c => c.stage === col.key);
@@ -1095,8 +1117,8 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* View 3: Table View */}
-      {viewMode === 'table' && (
+      {/* Screen 4: Table View */}
+      {viewMode === 'table' && (isMD || allowedTabs.includes('table')) && (
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
             <div>
@@ -1205,8 +1227,8 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* View 4: Gantt View */}
-      {viewMode === 'gantt' && (
+      {/* Screen 5: Gantt View */}
+      {viewMode === 'gantt' && (isMD || allowedTabs.includes('gantt')) && (
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-6 mb-8">
           <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-6">
             <div>
@@ -1254,8 +1276,8 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* View 5: Template Vault */}
-      {viewMode === 'templates' && (
+      {/* Screen 6: Template Vault */}
+      {viewMode === 'templates' && (isMD || allowedTabs.includes('templates')) && (
         <section className="space-y-6 mb-8">
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 flex flex-wrap items-center justify-between gap-4">
             <div>
