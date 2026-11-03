@@ -27,7 +27,6 @@ export default function TelephonyDesk({
   const [callOutcome, setCallOutcome] = useState<'Connected' | 'Voicemail' | 'Busy / No Answer' | 'Gatekeeper'>('Connected');
   const [callNotes, setCallNotes] = useState('');
   
-  // Simulated or Webhook Inbound Call Notification
   const [inboundCall, setInboundCall] = useState<{
     callerNumber: string;
     contact?: Contact;
@@ -59,7 +58,6 @@ export default function TelephonyDesk({
     setCallNotes('');
     setIsCalling(true);
 
-    // Launch system/VoIP handler (e.g. 4Com HiHi CTI, Jiminny, Teams, softphone)
     const sanitizedPhone = contact.phone.replace(/[^0-9+]/g, '');
     window.location.href = `${ctiProtocol}:${sanitizedPhone}`;
   };
@@ -101,15 +99,29 @@ export default function TelephonyDesk({
   };
 
   const handleSimulateInboundCall = () => {
-    const target = contacts[Math.floor(Math.random() * contacts.length)] || {
-      name: 'Unknown Lead',
-      phone: '+44 20 7946 0912',
-      accountNumber: 'ACC-NEW',
-    };
-    setInboundCall({
-      callerNumber: target.phone,
-      contact: target,
-    });
+    if (contacts.length > 0) {
+      const target = contacts[Math.floor(Math.random() * contacts.length)];
+      setInboundCall({
+        callerNumber: target.phone || '+44 20 7946 0912',
+        contact: target,
+      });
+    } else {
+      const fallbackTarget: Contact = {
+        accountNumber: 'ACC-SIMULATED',
+        name: 'Inbound Test Caller',
+        company: 'Apex Telecom',
+        crn: '12849501',
+        email: 'inbound@test.com',
+        phone: '+44 20 7946 0912',
+        stage: 'Lead',
+        synced: true,
+        updatedAt: new Date().toISOString(),
+      };
+      setInboundCall({
+        callerNumber: fallbackTarget.phone,
+        contact: fallbackTarget,
+      });
+    }
   };
 
   const handleAnswerAndScreenPop = () => {
@@ -168,7 +180,7 @@ export default function TelephonyDesk({
         </div>
       )}
 
-      {/* Active Call Drawer / Bar */}
+      {/* Active Call Console */}
       {isCalling && activeCallContact && (
         <div className="p-5 rounded-2xl bg-slate-900 border border-emerald-500/40 shadow-xl space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -226,7 +238,7 @@ export default function TelephonyDesk({
         </div>
       )}
 
-      {/* CTI Dialing Configuration & Quick Test Panel */}
+      {/* CTI Dialing Configuration */}
       <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
