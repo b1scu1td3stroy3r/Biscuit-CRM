@@ -6,7 +6,7 @@ import {
   FileText, CheckCircle2, Loader2, FolderCheck, Plus, Search, 
   RefreshCw, ExternalLink, ChevronRight, ArrowRight, LayoutGrid, List, Clock,
   BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin,
-  Cloud, CloudOff, Hash
+  Cloud, CloudOff, Hash, Users
 } from 'lucide-react';
 import { db, Contact, ProjectTask, StoredTemplate } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
@@ -16,6 +16,7 @@ import { DEFAULT_TEMPLATES, replaceTokens, TemplateItem } from '../packages/temp
 import CommandPalette from '../components/CommandPalette';
 import HealthWizard from '../components/HealthWizard';
 import DealDetailDrawer from '../components/DealDetailDrawer';
+import EmployeeHub from '../components/EmployeeHub';
 
 declare global {
   interface Window {
@@ -45,13 +46,13 @@ export default function Dashboard() {
   const [isOnline, setIsOnline] = useState(true);
   const [lastSyncedSheetId, setLastSyncedSheetId] = useState<string | null>(null);
   const [auditSheetId, setAuditSheetId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'kanban' | 'table' | 'gantt' | 'templates'>('kanban');
+  const [viewMode, setViewMode] = useState<'kanban' | 'table' | 'gantt' | 'templates' | 'hub'>('kanban');
 
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isHealthOpen, setIsHealthOpen] = useState(false);
   const [selectedDealForDrawer, setSelectedDealForDrawer] = useState<Contact | null>(null);
 
-  const [senderName, setSenderName] = useState<string>('Account Executive');
+  const [senderName, setSenderName] = useState<string>('Sarah Jenkins');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -102,7 +103,6 @@ export default function Dashboard() {
   const loadData = async () => {
     const rawContacts = await db.contacts.toArray();
     
-    // Backfill any existing records without an Account Number
     const contactList: Contact[] = [];
     for (const c of rawContacts) {
       if (!c.accountNumber && c.id) {
@@ -210,7 +210,7 @@ export default function Dashboard() {
       crn: '',
       email: '',
       phone: '',
-      accountManager: '',
+      accountManager: senderName,
       billingAddress: '',
       shippingAddress: '',
       stage: 'Lead',
@@ -467,30 +467,37 @@ export default function Dashboard() {
             <kbd className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">⌘K</kbd>
           </button>
 
+          {/* Navigation Bar */}
           <div className="flex bg-slate-900 border border-slate-800 rounded-lg p-0.5">
             <button
               onClick={() => setViewMode('kanban')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 transition ${viewMode === 'kanban' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 transition ${viewMode === 'kanban' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
             >
               <LayoutGrid className="w-3.5 h-3.5" /> Pipeline Board
             </button>
             <button
               onClick={() => setViewMode('table')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 transition ${viewMode === 'table' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 transition ${viewMode === 'table' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
             >
               <List className="w-3.5 h-3.5" /> Table View
             </button>
             <button
               onClick={() => setViewMode('gantt')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 transition ${viewMode === 'gantt' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 transition ${viewMode === 'gantt' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
             >
               <CalendarIcon className="w-3.5 h-3.5" /> Gantt & Milestones
             </button>
             <button
               onClick={() => setViewMode('templates')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 transition ${viewMode === 'templates' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 transition ${viewMode === 'templates' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
             >
               <BookOpen className="w-3.5 h-3.5" /> Template Vault
+            </button>
+            <button
+              onClick={() => setViewMode('hub')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 transition ${viewMode === 'hub' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              <Users className="w-3.5 h-3.5" /> Employee Hub
             </button>
           </div>
 
@@ -614,7 +621,17 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Kanban View */}
+      {/* View 1: Employee Hub */}
+      {viewMode === 'hub' && (
+        <EmployeeHub
+          currentRepName={senderName}
+          contacts={contacts}
+          onRepNameChange={handleUpdateSenderName}
+          onAdvanceContactStage={advanceStage}
+        />
+      )}
+
+      {/* View 2: Kanban Pipeline */}
       {viewMode === 'kanban' && (
         <section className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
           {PIPELINE_STAGES.map((col, idx) => {
@@ -652,7 +669,6 @@ export default function Dashboard() {
                         )}
                       </div>
 
-                      {/* Primary Account Badge & Optional CRN */}
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded font-semibold">
                           {c.accountNumber}
@@ -706,7 +722,7 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Table View */}
+      {/* View 3: Table View */}
       {viewMode === 'table' && (
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
@@ -781,7 +797,7 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Gantt View */}
+      {/* View 4: Gantt View */}
       {viewMode === 'gantt' && (
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-6 mb-8">
           <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-6">
@@ -830,7 +846,7 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Template Vault View */}
+      {/* View 5: Template Vault */}
       {viewMode === 'templates' && (
         <section className="space-y-6 mb-8">
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 flex flex-wrap items-center justify-between gap-4">
@@ -984,7 +1000,6 @@ export default function Dashboard() {
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-200">✕</button>
             </div>
 
-            {/* Optional UK Companies House Lookup */}
             <div className="mb-4 p-3.5 bg-slate-950/60 rounded-xl border border-slate-800/80">
               <label className="text-xs font-semibold text-slate-300 block mb-1">
                 Optional: UK Companies House Autofill (If Business Customer)
