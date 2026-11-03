@@ -40,20 +40,38 @@ export default function DepartmentNewsfeed({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const cleanupOldItemsAndLoad = async () => {
-    // 24-hour midnight boundary: Wipe events prior to today's midnight (00:00:00)
+    // 1. One-time clean of legacy dummy seed records
+    try {
+      const all = await db.newsFeed.toArray();
+      for (const item of all) {
+        if (
+          item.title?.includes('David Miller') ||
+          item.title?.includes('£14,400') ||
+          item.title?.includes('Sophie Taylor') ||
+          item.title?.includes('Dyson Procurement') ||
+          item.title === 'test'
+        ) {
+          if (item.id) await db.newsFeed.delete(item.id);
+        }
+      }
+    } catch (e) {
+      console.warn('News cleanup deferred:', e);
+    }
+
+    // 2. Midnight Daily Reset: Delete events older than 00:00:00 today
     const todayMidnight = new Date();
     todayMidnight.setHours(0, 0, 0, 0);
     const todayMidnightISO = todayMidnight.toISOString();
 
-    const allItems = await db.newsFeed.toArray();
-    for (const item of allItems) {
+    const currentItems = await db.newsFeed.toArray();
+    for (const item of currentItems) {
       if (item.createdAt < todayMidnightISO && item.id) {
         await db.newsFeed.delete(item.id);
       }
     }
 
-    const currentDayItems = await db.newsFeed.toArray();
-    setNews(currentDayItems.reverse());
+    const freshDayItems = await db.newsFeed.toArray();
+    setNews(freshDayItems.reverse());
   };
 
   useEffect(() => {
@@ -281,7 +299,6 @@ export default function DepartmentNewsfeed({
 
               {/* Reaction Emojis & Stamp */}
               <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between">
-                {/* Emoji Pickers */}
                 <div className="flex items-center gap-1">
                   {EMOJI_OPTIONS.map(({ emoji }) => {
                     const count = reactions[emoji] || 0;
@@ -312,9 +329,9 @@ export default function DepartmentNewsfeed({
         })}
 
         {filteredNews.length === 0 && (
-          <div className="w-full py-4 text-center text-xs text-slate-400 border border-dashed border-slate-800/80 rounded-xl flex items-center justify-center gap-2">
+          <div className="w-full py-5 text-center text-xs text-slate-400 border border-dashed border-slate-800/80 rounded-xl flex items-center justify-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-400" />
-            <span>Today's slate is fresh for {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}. As your team works, deals won, invoices paid, and shoutouts will glide along here!</span>
+            <span>Today's slate is fresh for {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}. Today's closed deals, invoice receipts, and team cheers will appear here!</span>
           </div>
         )}
       </div>
