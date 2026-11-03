@@ -1,6 +1,6 @@
 export interface TemplateItem {
   id: string;
-  category: 'Cold Outreach' | 'Objection Handling' | 'Procurement Followup' | 'Onboarding' | 'Custom';
+  category: 'Cold Outreach' | 'Follow Up' | 'Legal & Invoicing' | 'Custom';
   title: string;
   subject?: string;
   body: string;
@@ -9,49 +9,46 @@ export interface TemplateItem {
 
 export const DEFAULT_TEMPLATES: TemplateItem[] = [
   {
-    id: 'intro_pitch',
+    id: 'outreach-intro',
     category: 'Cold Outreach',
-    title: 'Zero-Storage Business OS Pitch',
-    subject: 'Streamlining operations at {{company}} with zero third-party cloud risk',
+    title: 'Initial Commercial Introduction',
+    subject: 'Partnership Overview: {{company}} [Acc: {{account_number}}]',
     body: `Hi {{contact_name}},
 
-I noticed your work at {{company}} (CRN: {{crn}}).
+I've been tracking {{company}}'s commercial footprint and wanted to initiate direct contact regarding our operating solutions.
 
-Most organizations struggle with escalating cloud CRM storage fees and GDPR third-party liability. Biscuit CRM lets your teams run entire pipeline workflows directly within your company's existing Google Workspace ledger with £0 third-party database hosting.
+Your account profile has been logged under reference {{account_number}}.
 
-Would you be open to a 10-minute walk-through this Thursday?
+Would you have 10 minutes next Tuesday to run through our SLA roadmap?
+
+Best regards,
+{{sender_name}}
+Biscuit Commercial Team`,
+  },
+  {
+    id: 'follow-up-stage',
+    category: 'Follow Up',
+    title: 'Pipeline Milestone Check-in',
+    subject: 'Stage Update: {{company}} [Acc: {{account_number}}]',
+    body: `Hi {{contact_name}},
+
+Quick update regarding {{company}}'s onboarding milestones under account reference {{account_number}}.
+
+We have transitioned your profile to the {{stage}} phase. If you require any documentation adjustments, reply directly to this thread.
 
 Best regards,
 {{sender_name}}`,
   },
   {
-    id: 'objection_cloud',
-    category: 'Objection Handling',
-    title: 'Objection: "We Already Use Salesforce/HubSpot"',
-    subject: 'Addressing CRM lock-in and sovereignty at {{company}}',
+    id: 'invoice-billing',
+    category: 'Legal & Invoicing',
+    title: 'Master Service Agreement & Invoicing',
+    subject: 'Invoice & Terms: {{company}} [Acc: {{account_number}}]',
     body: `Hi {{contact_name}},
 
-Completely understand that {{company}} is already embedded in your current stack.
+Attached is the commercial schedule for {{company}} (Account No: {{account_number}}).
 
-The primary difference our clients point to is the CIA Triad and complete data ownership: with traditional enterprise CRMs, your contacts and customer intelligence reside in vendor-controlled silos. With Biscuit CRM, 100% of your records stay in your own audited Google Drive ledger—no monthly seats or per-contact markups.
-
-Happy to send over our architecture comparison if helpful.
-
-Best regards,
-{{sender_name}}`,
-  },
-  {
-    id: 'procurement_deck',
-    category: 'Procurement Followup',
-    title: 'Procurement & Security Handoff',
-    subject: '{{company}} // Zero-Storage Security Ledger Review',
-    body: `Hi {{contact_name}},
-
-As {{company}} advances through our Procurement stage, I've prepared our direct browser-to-Drive zero-retention data flow documentation.
-
-Because no customer records or credentials ever touch an external server, your vendor assessment and compliance checks are streamlined.
-
-Let me know if your IT or legal team requires any specific security schedules.
+Please verify the billing schedule at your earliest convenience so logistics can lock in your dispatch window.
 
 Best regards,
 {{sender_name}}`,
@@ -59,19 +56,21 @@ Best regards,
 ];
 
 export function replaceTokens(
-  templateText: string, 
-  data: { 
-    contact_name?: string; 
-    company?: string; 
-    crn?: string; 
+  template: string,
+  tokens: {
+    account_number?: string;
+    contact_name?: string;
+    company?: string;
+    crn?: string;
     stage?: string;
     sender_name?: string;
   }
 ): string {
-  return templateText
-    .replace(/\{\{contact_name\}\}/g, data.contact_name || 'Team')
-    .replace(/\{\{company\}\}/g, data.company || 'your organization')
-    .replace(/\{\{crn\}\}/g, data.crn || 'N/A')
-    .replace(/\{\{stage\}\}/g, data.stage || 'Lead')
-    .replace(/\{\{sender_name\}\}/g, data.sender_name || 'Account Executive');
+  return template
+    .replace(/\{\{account_number\}\}/g, tokens.account_number || 'ACC-PENDING')
+    .replace(/\{\{contact_name\}\}/g, tokens.contact_name || 'Client')
+    .replace(/\{\{company\}\}/g, tokens.company || 'Company')
+    .replace(/\{\{crn\}\}/g, tokens.crn ? `(CRN: ${tokens.crn})` : '')
+    .replace(/\{\{stage\}\}/g, tokens.stage || 'Pipeline')
+    .replace(/\{\{sender_name\}\}/g, tokens.sender_name || 'Account Executive');
 }

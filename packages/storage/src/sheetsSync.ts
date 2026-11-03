@@ -4,10 +4,10 @@ const STORAGE_KEY_SHEET_ID = 'biscuit_crm_pipeline_sheet_id';
 const DEFAULT_MASTER_SHEET_ID = '14BchRnN5ah4Q6opNG3wvmaAbZ15XgjTc-Nw58AuKQl';
 
 export const SHEET_COLUMNS = [
-  'Contact ID',
+  'Account Number',
   'Contact Name',
   'Company Name',
-  'CRN',
+  'CRN (Optional)',
   'Email',
   'Phone',
   'Lifecycle Stage',
@@ -42,7 +42,6 @@ export async function pullContactsFromGoogleSheet(accessToken: string, folderId:
   const metaData = await metaRes.json();
   const firstSheetTitle = metaData.sheets?.[0]?.properties?.title || 'Sheet1';
 
-  // Read A2:L across all extended columns
   const res = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(firstSheetTitle)}!A2:L?majorDimension=ROWS`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -62,6 +61,7 @@ export async function pullContactsFromGoogleSheet(accessToken: string, folderId:
 
   for (const r of rows) {
     if (!r[1]) continue;
+    const accountNumber = r[0] || `ACC-${Math.floor(10000 + Math.random() * 90000)}`;
     const name = r[1];
     const company = r[2] || '';
     const crn = r[3] || '';
@@ -76,6 +76,7 @@ export async function pullContactsFromGoogleSheet(accessToken: string, folderId:
 
     if (!existingEmails.has(email.toLowerCase())) {
       await db.contacts.add({
+        accountNumber,
         name,
         company,
         crn,
@@ -95,6 +96,7 @@ export async function pullContactsFromGoogleSheet(accessToken: string, folderId:
       const existing = existingContacts.find(c => c.email.toLowerCase() === email.toLowerCase());
       if (existing?.id) {
         await db.contacts.update(existing.id, {
+          accountNumber: existing.accountNumber || accountNumber,
           name,
           company,
           crn,
@@ -172,7 +174,7 @@ export async function syncOutboxToGoogleSheets(accessToken: string, folderId?: s
   const rows = [
     SHEET_COLUMNS,
     ...contacts.map((c) => [
-      c.id ?? '',
+      c.accountNumber || `ACC-${c.id ? 10000 + c.id : '10000'}`,
       c.name || '',
       c.company || '',
       c.crn || '',
