@@ -28,7 +28,6 @@ export default function DealDetailDrawer({
     if (!contact) return;
 
     const fetchDetails = async () => {
-      // 1. Fetch audit events matching this contact
       const allAudits = await db.audit.toArray();
       const entityId = `Contact_${contact.id}`;
       const logs = allAudits.filter(
@@ -36,7 +35,6 @@ export default function DealDetailDrawer({
       );
       setAuditLogs(logs.reverse());
 
-      // 2. Fetch associated project milestones / deals for this company
       const allTasks = await db.projects.toArray();
       const matchingTasks = allTasks.filter(
         (t) => t.companyName?.toLowerCase() === contact.company?.toLowerCase()
@@ -51,7 +49,6 @@ export default function DealDetailDrawer({
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
-      {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
         onClick={onClose}
@@ -74,7 +71,7 @@ export default function DealDetailDrawer({
                     <span>{contact.company}</span>
                     {contact.crn && (
                       <span className="font-mono text-sky-400 text-[10px] bg-sky-950/40 border border-sky-900/40 px-1.5 py-0.5 rounded">
-                        #{contact.crn}
+                        CRN: {contact.crn}
                       </span>
                     )}
                   </p>
@@ -108,7 +105,7 @@ export default function DealDetailDrawer({
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Deal & Audit History ({auditLogs.length})
+                Deal & Stage History ({auditLogs.length})
               </button>
               <button
                 onClick={() => setActiveTab('deals')}
@@ -129,7 +126,6 @@ export default function DealDetailDrawer({
             {/* Tab 1: Account Overview */}
             {activeTab === 'overview' && (
               <div className="space-y-6">
-                {/* Stage Badge & Quick Advance */}
                 <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 flex items-center justify-between">
                   <div>
                     <span className="text-[10px] uppercase font-mono tracking-wider text-slate-400 block mb-1">
@@ -149,7 +145,6 @@ export default function DealDetailDrawer({
                   )}
                 </div>
 
-                {/* Contact Information Cards */}
                 <div className="space-y-3">
                   <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-mono">
                     Direct Contact Channels
@@ -182,7 +177,6 @@ export default function DealDetailDrawer({
                   </div>
                 </div>
 
-                {/* Company & Ledger Details */}
                 <div className="space-y-3">
                   <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-mono">
                     Ledger & Compliance Status
@@ -211,21 +205,21 @@ export default function DealDetailDrawer({
               </div>
             )}
 
-            {/* Tab 2: History & Audit Ledger */}
+            {/* Tab 2: History & Stage Changes */}
             {activeTab === 'history' && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-1.5">
-                    <History className="w-3.5 h-3.5 text-indigo-400" /> Audit Log & Deal Transitions
+                    <History className="w-3.5 h-3.5 text-indigo-400" /> Stage Transitions & Audit Trail
                   </h3>
                 </div>
 
                 {auditLogs.length === 0 ? (
                   <div className="p-8 text-center border border-dashed border-slate-800 rounded-xl space-y-2">
                     <ShieldCheck className="w-6 h-6 text-slate-600 mx-auto" />
-                    <p className="text-xs text-slate-400 font-medium">Initial intake recorded</p>
+                    <p className="text-xs text-slate-400 font-medium">Record Active</p>
                     <p className="text-[11px] text-slate-600">
-                      Record created and synchronized to Google Drive pipeline master on {contact.updatedAt.slice(0, 10)}.
+                      Created and synchronized to Google Drive pipeline master on {contact.updatedAt.slice(0, 10)}.
                     </p>
                   </div>
                 ) : (
@@ -248,7 +242,7 @@ export default function DealDetailDrawer({
               </div>
             )}
 
-            {/* Tab 3: Associated Deals / Milestones */}
+            {/* Tab 3: Connected Milestones */}
             {activeTab === 'deals' && (
               <div className="space-y-4">
                 <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-1.5">
@@ -260,7 +254,7 @@ export default function DealDetailDrawer({
                     <Clock className="w-6 h-6 text-slate-600 mx-auto" />
                     <p className="text-xs text-slate-400 font-medium">No linked delivery milestones</p>
                     <p className="text-[11px] text-slate-600">
-                      Create milestone timelines in the Gantt & Milestones view for {contact.company}.
+                      Milestones scheduled in Gantt & Milestones for {contact.company} will link here automatically.
                     </p>
                   </div>
                 ) : (
@@ -285,7 +279,6 @@ export default function DealDetailDrawer({
             )}
           </div>
 
-          {/* Footer Action */}
           <div className="p-5 border-t border-slate-800 bg-slate-900/60 flex items-center justify-end">
             <button
               onClick={onClose}
