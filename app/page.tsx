@@ -6,7 +6,7 @@ import {
   FileText, CheckCircle2, Loader2, FolderCheck, Plus, Search, 
   RefreshCw, ExternalLink, ChevronRight, ArrowRight, LayoutGrid, List, Clock,
   BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin,
-  CloudCheck, CloudOff
+  Cloud, CloudOff
 } from 'lucide-react';
 import { db, Contact, ProjectTask, StoredTemplate } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
@@ -506,7 +506,7 @@ export default function Dashboard() {
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                  <CloudCheck className="w-3 h-3" /> All changes saved
+                  <CheckCircle2 className="w-3 h-3" /> All changes saved
                 </span>
               )}
             </div>
