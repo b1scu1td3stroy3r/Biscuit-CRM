@@ -170,7 +170,7 @@ export default function Dashboard() {
       await loadData();
     } catch (err) {
       console.error(err);
-      alert('Pull failed. Please verify spreadsheet exists on Drive.');
+      alert(`Sync pull failed: ${err.message || err}`);
     } finally {
       setIsPulling(false);
     }
