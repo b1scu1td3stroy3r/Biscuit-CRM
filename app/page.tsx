@@ -8,7 +8,7 @@ import {
   BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin,
   Cloud, CloudOff, Hash, Users, Download, FileSpreadsheet, AlertTriangle, AlertCircle, Timer,
   Target, RotateCcw, Laptop, Briefcase, HeartHandshake, Megaphone, Wrench, PoundSterling, Crown,
-  Lock, UserX
+  Lock, Phone, PhoneCall
 } from 'lucide-react';
 import { db, Contact, ProjectTask, StoredTemplate, AuditRecord, DepartmentRole, EmployeeProfile } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
@@ -23,6 +23,8 @@ import DealDetailDrawer from '../components/DealDetailDrawer';
 import EmployeeHub from '../components/EmployeeHub';
 import FinanceDesk from '../components/FinanceDesk';
 import OrgRosterDesk from '../components/OrgRosterDesk';
+import TelephonyDesk from '../components/TelephonyDesk';
+import MailchimpDesk from '../components/MailchimpDesk';
 
 declare global {
   interface Window {
@@ -31,7 +33,7 @@ declare global {
   }
 }
 
-type ViewTabType = 'kanban' | 'table' | 'gantt' | 'templates' | 'hub' | 'finance' | 'roster';
+type ViewTabType = 'kanban' | 'table' | 'gantt' | 'templates' | 'hub' | 'finance' | 'roster' | 'telephony' | 'mailchimp';
 
 const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; color: string; defaultTab: ViewTabType; allowedTabs: ViewTabType[] }> = {
   MD: { 
@@ -39,21 +41,21 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
     icon: Crown, 
     color: 'text-amber-400 bg-amber-500/10 border-amber-500/30', 
     defaultTab: 'kanban',
-    allowedTabs: ['kanban', 'table', 'gantt', 'templates', 'hub', 'finance', 'roster']
+    allowedTabs: ['kanban', 'table', 'gantt', 'templates', 'hub', 'finance', 'roster', 'telephony', 'mailchimp']
   },
   Sales: { 
     label: 'Sales & Commercial', 
     icon: Briefcase, 
     color: 'text-amber-400 bg-amber-500/10 border-amber-500/20', 
     defaultTab: 'kanban',
-    allowedTabs: ['kanban', 'templates']
+    allowedTabs: ['kanban', 'telephony', 'templates']
   },
   Operations: { 
     label: 'Operations & Logistics', 
     icon: Wrench, 
     color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20', 
     defaultTab: 'gantt',
-    allowedTabs: ['gantt']
+    allowedTabs: ['gantt', 'telephony']
   },
   HR: { 
     label: 'People & HR', 
@@ -66,8 +68,8 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
     label: 'Growth & Marketing', 
     icon: Megaphone, 
     color: 'text-purple-400 bg-purple-500/10 border-purple-500/20', 
-    defaultTab: 'templates',
-    allowedTabs: ['templates']
+    defaultTab: 'mailchimp',
+    allowedTabs: ['mailchimp', 'templates']
   },
   IT: { 
     label: 'IT & Infrastructure', 
@@ -157,10 +159,8 @@ export default function Dashboard() {
   const [customTemplates, setCustomTemplates] = useState<StoredTemplate[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditRecord[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isPulling, setIsPulling] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [lastSyncedSheetId, setLastSyncedSheetId] = useState<string | null>(null);
-  const [auditSheetId, setAuditSheetId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewTabType>('kanban');
 
   const [isCommandOpen, setIsCommandOpen] = useState(false);
@@ -184,16 +184,6 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-
-  const [selectedContactForTemplate, setSelectedContactForTemplate] = useState<Contact | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [isNewTemplateModalOpen, setIsNewTemplateModalOpen] = useState(false);
-  const [newTemplateForm, setNewTemplateForm] = useState({
-    title: '',
-    category: 'Custom' as const,
-    subject: '',
-    body: '',
-  });
 
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [newTask, setNewTask] = useState({
@@ -251,7 +241,6 @@ export default function Dashboard() {
     setCustomTemplates(storedTpls);
     setAuditLogs(storedAudits);
 
-    // Sole Trader & Single Employee Auto-MD Assumption Rule
     const savedDept = localStorage.getItem('biscuit_crm_user_department') as DepartmentRole;
     if (roster.length <= 1) {
       setDepartment('MD');
@@ -265,9 +254,21 @@ export default function Dashboard() {
 
     const savedSupervisor = localStorage.getItem('biscuit_crm_supervisor_email');
     if (savedSupervisor) setSupervisorEmail(savedSupervisor);
+  };
 
-    if (contactList.length > 0 && !selectedContactForTemplate) {
-      setSelectedContactForTemplate(contactList[0]);
+  const awardRepXP = async (amount: number, reason: string) => {
+    try {
+      const allProfiles = await db.employees.toArray();
+      const profile = allProfiles.find(p => p.name.toLowerCase() === senderName.toLowerCase());
+      if (profile && profile.id) {
+        const step = (profile as any)?.tier === 'Staff' ? 200 : 250;
+        const maxLvl = (profile as any)?.tier === 'Staff' ? 10 : 5;
+        const updatedXP = profile.xp + amount;
+        const updatedLevel = Math.min(maxLvl, Math.floor(updatedXP / step) + 1);
+        await db.employees.update(profile.id, { xp: updatedXP, level: updatedLevel });
+      }
+    } catch (e) {
+      console.warn('XP update deferred:', e);
     }
   };
 
@@ -285,13 +286,11 @@ export default function Dashboard() {
           setToken(accessToken);
 
           try {
-            // Dynamically bind to the user's private Google workspace
             const ws = await resolveUserWorkspace(accessToken);
             setWorkspaceConfig(ws);
             setFolderId(ws.driveFolderId);
             setSenderName(ws.userName);
 
-            // If personal Google account (@gmail.com) or sole user -> assume Managing Director
             const roster = await db.employees.toArray();
             if (ws.isPersonalAccount || roster.length <= 1) {
               setDepartment('MD');
@@ -416,19 +415,7 @@ export default function Dashboard() {
       timestamp: Date.now(),
     });
 
-    try {
-      const allProfiles = await db.employees.toArray();
-      const profile = allProfiles.find(p => p.name.toLowerCase() === senderName.toLowerCase());
-      if (profile && profile.id) {
-        const step = (profile as any)?.tier === 'Staff' ? 200 : 250;
-        const maxLvl = (profile as any)?.tier === 'Staff' ? 10 : 5;
-        const updatedXP = profile.xp + 50;
-        const updatedLevel = Math.min(maxLvl, Math.floor(updatedXP / step) + 1);
-        await db.employees.update(profile.id, { xp: updatedXP, level: updatedLevel });
-      }
-    } catch (xpErr) {
-      console.warn('XP increment deferred:', xpErr);
-    }
+    await awardRepXP(50, `Advanced deal to ${nextStage}`);
 
     authenticateToken().then(async (t) => {
       if (folderId) {
@@ -634,7 +621,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Dynamic Persistence Banner tied to the User's OWN Drive */}
+      {/* Dynamic Persistence Banner */}
       <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-3">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -680,6 +667,24 @@ export default function Dashboard() {
             className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'kanban' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
           >
             <LayoutGrid className="w-3.5 h-3.5" /> Pipeline Board
+          </button>
+        )}
+
+        {(isMD || allowedTabs.includes('telephony')) && (
+          <button
+            onClick={() => setViewMode('telephony')}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'telephony' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <Phone className="w-3.5 h-3.5 text-sky-400" /> CTI Telephony & Dialing
+          </button>
+        )}
+
+        {(isMD || allowedTabs.includes('mailchimp')) && (
+          <button
+            onClick={() => setViewMode('mailchimp')}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'mailchimp' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <Megaphone className="w-3.5 h-3.5 text-purple-400" /> Mailchimp Connector
           </button>
         )}
 
@@ -738,7 +743,26 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Screen: Org Roster Desk (Restricted to IT & MD) */}
+      {/* Screen: Telephony & CTI */}
+      {viewMode === 'telephony' && (isMD || allowedTabs.includes('telephony')) && (
+        <TelephonyDesk
+          contacts={contacts}
+          onOpenContact={(c) => setSelectedDealForDrawer(c)}
+          onAwardXP={awardRepXP}
+          currentUser={senderName}
+        />
+      )}
+
+      {/* Screen: Mailchimp Connector */}
+      {viewMode === 'mailchimp' && (isMD || allowedTabs.includes('mailchimp')) && (
+        <MailchimpDesk
+          contacts={contacts}
+          onDataChanged={loadData}
+          onAwardXP={awardRepXP}
+        />
+      )}
+
+      {/* Screen: Org Roster Desk */}
       {viewMode === 'roster' && (isMD || isIT) && (
         <OrgRosterDesk
           currentRepName={senderName}
@@ -832,6 +856,11 @@ export default function Dashboard() {
                           <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.5 rounded font-semibold">
                             {c.accountNumber}
                           </span>
+                          {c.mailchimpStatus === 'Synced' && (
+                            <span className="text-[9px] font-mono text-purple-300 bg-purple-950/60 border border-purple-800/60 px-1.5 py-0.5 rounded font-semibold">
+                              Mailchimp
+                            </span>
+                          )}
                         </div>
 
                         <div className="text-[10px] text-slate-400 truncate">{c.email}</div>
@@ -892,9 +921,9 @@ export default function Dashboard() {
                 <th className="px-6 py-3">Account No</th>
                 <th className="px-6 py-3">Customer</th>
                 <th className="px-6 py-3">Company</th>
-                <th className="px-6 py-3">Account Manager</th>
+                <th className="px-6 py-3">Phone</th>
                 <th className="px-6 py-3">Stage</th>
-                <th className="px-6 py-3">SLA Status</th>
+                <th className="px-6 py-3">Mailchimp</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
@@ -903,9 +932,15 @@ export default function Dashboard() {
                   <td className="px-6 py-4 font-mono text-emerald-400 font-semibold text-xs">{c.accountNumber}</td>
                   <td className="px-6 py-4 font-semibold text-slate-100">{c.name}</td>
                   <td className="px-6 py-4">{c.company || '—'}</td>
-                  <td className="px-6 py-4 text-xs text-slate-300">{c.accountManager || 'Unassigned'}</td>
+                  <td className="px-6 py-4 font-mono text-xs text-sky-400">{c.phone || '—'}</td>
                   <td className="px-6 py-4 text-xs">{c.stage}</td>
-                  <td className="px-6 py-4 font-mono text-xs text-slate-400">{calculateSLAStatus(c).badgeLabel}</td>
+                  <td className="px-6 py-4 text-xs">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                      c.mailchimpStatus === 'Synced' ? 'border-purple-500/30 text-purple-300 bg-purple-500/10' : 'border-slate-800 text-slate-400'
+                    }`}>
+                      {c.mailchimpStatus || 'Not Synced'}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -978,7 +1013,7 @@ export default function Dashboard() {
         onSelectView={(mode) => setViewMode(mode)}
         onOpenNewContact={() => handleOpenAddModal('Prospect')}
         onOpenNewMilestone={() => setIsTaskModalOpen(true)}
-        onOpenNewTemplate={() => setIsNewTemplateModalOpen(true)}
+        onOpenNewTemplate={() => {}}
       />
 
       <HealthWizard
