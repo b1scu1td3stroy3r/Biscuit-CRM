@@ -4,10 +4,14 @@ export interface Contact {
   id?: number;
   name: string;
   company: string;
-  crn?: string;
+  crn: string;
   email: string;
-  phone?: string;
+  phone: string;
   stage: 'Lead' | 'Sales' | 'Procurement' | 'Logistics' | 'Customer Service';
+  accountManager?: string;
+  billingAddress?: string;
+  shippingAddress?: string;
+  internalNotes?: string;
   synced: boolean;
   updatedAt: string;
 }
@@ -27,9 +31,9 @@ export interface ProjectTask {
 export interface StoredTemplate {
   id?: number;
   templateKey: string;
-  category: 'Cold Outreach' | 'Objection Handling' | 'Procurement Followup' | 'Onboarding' | 'Custom';
+  category: 'Cold Outreach' | 'Follow Up' | 'Legal & Invoicing' | 'Custom';
   title: string;
-  subject?: string;
+  subject: string;
   body: string;
   updatedAt: string;
 }
@@ -42,19 +46,30 @@ export interface OutboxMutation {
   timestamp: number;
 }
 
+export interface AuditRecord {
+  id?: number;
+  timestamp: string;
+  actor: string;
+  action: string;
+  entityId: string;
+  details: string;
+}
+
 export class BiscuitDatabase extends Dexie {
-  contacts!: Table<Contact>;
-  projects!: Table<ProjectTask>;
-  templates!: Table<StoredTemplate>;
-  outbox!: Table<OutboxMutation>;
+  contacts!: Table<Contact, number>;
+  projects!: Table<ProjectTask, number>;
+  templates!: Table<StoredTemplate, number>;
+  outbox!: Table<OutboxMutation, number>;
+  auditLogs!: Table<AuditRecord, number>;
 
   constructor() {
-    super('BiscuitCRM_DB');
-    this.version(3).stores({
-      contacts: '++id, name, company, crn, stage, synced',
-      projects: '++id, title, companyName, startDate, endDate, synced',
-      templates: '++id, templateKey, category, title',
+    super('BiscuitDatabase');
+    this.version(2).stores({
+      contacts: '++id, name, company, crn, stage, synced, updatedAt',
+      projects: '++id, title, companyName, synced, updatedAt',
+      templates: '++id, templateKey, category, updatedAt',
       outbox: '++id, type, table, timestamp',
+      auditLogs: '++id, timestamp, actor, action, entityId',
     });
   }
 }
