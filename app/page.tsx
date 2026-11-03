@@ -6,12 +6,13 @@ import {
   FileText, CheckCircle2, Loader2, FolderCheck, Plus, Search, 
   RefreshCw, ExternalLink, ChevronRight, ArrowRight, LayoutGrid, List, Clock,
   BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin,
-  Cloud, CloudOff, Hash, Users
+  Cloud, CloudOff, Hash, Users, Download, FileSpreadsheet
 } from 'lucide-react';
-import { db, Contact, ProjectTask, StoredTemplate } from '../packages/storage/src/db';
+import { db, Contact, ProjectTask, StoredTemplate, AuditRecord } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
 import { syncTaskToGoogleCalendar } from '../packages/storage/src/calendarSync';
 import { logAuditEvent } from '../packages/storage/src/auditLogger';
+import { exportPipelineToCSV, exportAuditLogsToCSV } from '../packages/storage/src/exportUtils';
 import { DEFAULT_TEMPLATES, replaceTokens, TemplateItem } from '../packages/templates/src/templates';
 import CommandPalette from '../components/CommandPalette';
 import HealthWizard from '../components/HealthWizard';
@@ -78,6 +79,7 @@ export default function Dashboard() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [customTemplates, setCustomTemplates] = useState<StoredTemplate[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditRecord[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
@@ -152,9 +154,12 @@ export default function Dashboard() {
 
     const taskList = await db.projects.toArray();
     const storedTpls = await db.templates.toArray();
+    const storedAudits = await db.auditLogs.toArray();
+
     setContacts(contactList);
     setTasks(taskList);
     setCustomTemplates(storedTpls);
+    setAuditLogs(storedAudits);
 
     const savedSender = localStorage.getItem('biscuit_crm_sender_name');
     if (savedSender) setSenderName(savedSender);
@@ -275,7 +280,6 @@ export default function Dashboard() {
     }
   };
 
-  // Automated Stage-to-Milestone Calendar Generation Engine
   const advanceStage = async (contact: Contact) => {
     const currentIndex = PIPELINE_STAGES.findIndex(s => s.key === contact.stage);
     if (currentIndex >= PIPELINE_STAGES.length - 1) return;
@@ -296,7 +300,6 @@ export default function Dashboard() {
       timestamp: Date.now(),
     });
 
-    // Reward Rep with +50 XP
     try {
       const allProfiles = await db.employees.toArray();
       const profile = allProfiles.find(p => p.name.toLowerCase() === senderName.toLowerCase());
@@ -309,7 +312,6 @@ export default function Dashboard() {
       console.warn('Could not increment XP on stage advance:', xpErr);
     }
 
-    // Automated Stage-to-Milestone Trigger
     const milestoneConfig = getMilestoneConfigForStage(nextStage, contact.company || contact.name);
 
     authenticateToken().then(async (t) => {
@@ -676,6 +678,17 @@ export default function Dashboard() {
             </a>
           )}
 
+          {/* Direct CSV Audit Trail Export */}
+          <button
+            onClick={() => exportAuditLogsToCSV(auditLogs)}
+            disabled={auditLogs.length === 0}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition"
+            title="Download full compliance audit ledger as CSV"
+          >
+            <Download className="w-3 h-3 text-indigo-400" />
+            Export Audit CSV ({auditLogs.length})
+          </button>
+
           {viewMode === 'gantt' && (
             <button
               onClick={() => setIsTaskModalOpen(true)}
@@ -807,12 +820,25 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* View 3: Table View */}
+      {/* View 3: Table View with Direct Pipeline CSV Export */}
       {viewMode === 'table' && (
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-            <h2 className="font-semibold text-slate-200 text-sm">All Customer Accounts</h2>
-            <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full">{contacts.length} Records</span>
+            <div>
+              <h2 className="font-semibold text-slate-200 text-sm">All Customer Accounts</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Primary pipeline dataset synced to Dexie and Google Sheets</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => exportPipelineToCSV(contacts)}
+                disabled={contacts.length === 0}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition shadow-md shadow-emerald-600/20"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                Export Pipeline CSV
+              </button>
+              <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full">{contacts.length} Records</span>
+            </div>
           </div>
           <table className="w-full text-left text-sm text-slate-300">
             <thead className="bg-slate-900/80 text-xs uppercase text-slate-400 border-b border-slate-800">
