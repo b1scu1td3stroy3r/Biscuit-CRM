@@ -57,6 +57,7 @@ export interface LeaveRequest {
   days: number;
   status: 'Pending' | 'Approved' | 'Rejected';
   notes?: string;
+  calendarEventId?: string;
   createdAt: string;
 }
 
@@ -101,7 +102,7 @@ export class BiscuitDatabase extends Dexie {
 
   constructor() {
     super('BiscuitDatabase');
-    this.version(4).stores({
+    this.version(5).stores({
       contacts: '++id, accountNumber, name, company, crn, stage, synced, updatedAt',
       projects: '++id, title, companyName, synced, updatedAt',
       templates: '++id, templateKey, category, updatedAt',

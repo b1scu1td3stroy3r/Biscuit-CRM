@@ -1,9 +1,26 @@
-import { db, ProjectTask } from './db';
+export interface CalendarSyncPayload {
+  title: string;
+  companyName: string;
+  startDate: string;
+  endDate: string;
+  progress: number;
+  calendarEventId?: string;
+  synced?: boolean;
+  updatedAt?: string;
+}
 
-export async function syncTaskToGoogleCalendar(accessToken: string, task: ProjectTask) {
-  const eventBody = {
-    summary: `🍪 Biscuit CRM: ${task.title} (${task.companyName})`,
-    description: `Milestone managed directly by Biscuit CRM. Progress: ${task.progress}%`,
+export interface LeaveCalendarPayload {
+  employeeName: string;
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  notes?: string;
+}
+
+export async function syncTaskToGoogleCalendar(accessToken: string, task: CalendarSyncPayload): Promise<string> {
+  const event = {
+    summary: `[Biscuit Milestone] ${task.title} - ${task.companyName}`,
+    description: `Project phase for ${task.companyName}.\nProgress: ${task.progress}%\nLast modified: ${task.updatedAt || new Date().toISOString()}`,
     start: {
       date: task.startDate,
     },
@@ -12,36 +29,58 @@ export async function syncTaskToGoogleCalendar(accessToken: string, task: Projec
     },
   };
 
-  if (task.calendarEventId) {
-    // Update existing Google Calendar event
-    const res = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${task.calendarEventId}`,
-      {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(eventBody),
-      }
-    );
-    if (!res.ok) throw new Error('Failed to update Calendar milestone');
-    return task.calendarEventId;
-  } else {
-    // Create new Google Calendar event
-    const res = await fetch(
-      'https://www.googleapis.com/calendar/v3/calendars/primary/events',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(eventBody),
-      }
-    );
-    if (!res.ok) throw new Error('Failed to create Calendar milestone');
-    const createdEvent = await res.json();
-    return createdEvent.id;
+  const url = task.calendarEventId
+    ? `https://www.googleapis.com/calendar/v3/calendars/primary/events/${task.calendarEventId}`
+    : 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+
+  const method = task.calendarEventId ? 'PUT' : 'POST';
+
+  const res = await fetch(url, {
+    method,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(event),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Failed to sync milestone to Google Calendar (${res.status})`);
   }
+
+  const data = await res.json();
+  return data.id;
+}
+
+export async function syncLeaveToGoogleCalendar(accessToken: string, leave: LeaveCalendarPayload): Promise<string> {
+  // All-day multi-day event blocking busy time
+  const event = {
+    summary: `OOO: ${leave.employeeName} (${leave.leaveType})`,
+    description: `Out of Office - ${leave.leaveType}\nNotes: ${leave.notes || 'None provided'}\nManaged via Biscuit CRM Employee Hub.`,
+    start: {
+      date: leave.startDate,
+    },
+    end: {
+      date: leave.endDate,
+    },
+    transparency: 'opaque', // Blocks time as Busy on Google Calendar
+  };
+
+  const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(event),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Failed to create OOO event on Google Calendar (${res.status})`);
+  }
+
+  const data = await res.json();
+  return data.id;
 }

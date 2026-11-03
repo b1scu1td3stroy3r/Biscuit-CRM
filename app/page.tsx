@@ -624,6 +624,7 @@ export default function Dashboard() {
       {/* View 1: Employee Hub */}
       {viewMode === 'hub' && (
         <EmployeeHub
+          onAuthenticateGoogle={authenticateToken}
           currentRepName={senderName}
           contacts={contacts}
           onRepNameChange={handleUpdateSenderName}
