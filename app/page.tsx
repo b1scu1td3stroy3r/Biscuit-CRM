@@ -69,7 +69,7 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
     icon: Megaphone, 
     color: 'text-purple-400 bg-purple-500/10 border-purple-500/20', 
     defaultTab: 'mailchimp',
-    allowedTabs: ['mailchimp', 'templates']
+    allowedTabs: ['mailchimp', 'telephony', 'templates']
   },
   IT: { 
     label: 'IT & Infrastructure', 
@@ -863,7 +863,7 @@ export default function Dashboard() {
                           )}
                         </div>
 
-                        <div className="text-[10px] text-slate-400 truncate">{c.email}</div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 truncate"><span>{c.email}</span>{c.phone && <a href={`tel:${c.phone.replace(/[^0-9+]/g, "")}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-0.5 text-emerald-400 hover:text-emerald-300 font-mono"><PhoneCall className="w-2.5 h-2.5" />{c.phone}</a>}</div>
 
                         <div className="flex items-center gap-1 pt-1 border-t border-slate-800/60">
                           {!isFirstCol && (
