@@ -8,7 +8,7 @@ import {
   BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin,
   Cloud, CloudOff, Hash, Users, Download, FileSpreadsheet, AlertTriangle, AlertCircle, Timer,
   Target, RotateCcw, Laptop, Briefcase, HeartHandshake, Megaphone, Wrench, PoundSterling, Crown,
-  Lock, Phone, PhoneCall
+  Lock, Phone, PhoneCall, Upload
 } from 'lucide-react';
 import { db, Contact, ProjectTask, StoredTemplate, AuditRecord, DepartmentRole, EmployeeProfile } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
@@ -25,6 +25,7 @@ import FinanceDesk from '../components/FinanceDesk';
 import OrgRosterDesk from '../components/OrgRosterDesk';
 import TelephonyDesk from '../components/TelephonyDesk';
 import MailchimpDesk from '../components/MailchimpDesk';
+import DataImportWizard from '../components/DataImportWizard';
 
 declare global {
   interface Window {
@@ -33,7 +34,7 @@ declare global {
   }
 }
 
-type ViewTabType = 'kanban' | 'table' | 'gantt' | 'templates' | 'hub' | 'finance' | 'roster' | 'telephony' | 'mailchimp';
+type ViewTabType = 'kanban' | 'table' | 'gantt' | 'templates' | 'hub' | 'finance' | 'roster' | 'telephony' | 'mailchimp' | 'import';
 
 const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; color: string; defaultTab: ViewTabType; allowedTabs: ViewTabType[] }> = {
   MD: { 
@@ -41,7 +42,7 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
     icon: Crown, 
     color: 'text-amber-400 bg-amber-500/10 border-amber-500/30', 
     defaultTab: 'kanban',
-    allowedTabs: ['kanban', 'table', 'gantt', 'templates', 'hub', 'finance', 'roster', 'telephony', 'mailchimp']
+    allowedTabs: ['kanban', 'table', 'gantt', 'templates', 'hub', 'finance', 'roster', 'telephony', 'mailchimp', 'import']
   },
   Sales: { 
     label: 'Sales & Commercial', 
@@ -76,7 +77,7 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
     icon: Laptop, 
     color: 'text-sky-400 bg-sky-500/10 border-sky-500/20', 
     defaultTab: 'table',
-    allowedTabs: ['table', 'roster']
+    allowedTabs: ['table', 'roster', 'import']
   },
   Finance: { 
     label: 'Finance & Invoicing', 
@@ -640,6 +641,15 @@ export default function Dashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+          {(isMD || isIT) && (
+            <button
+              onClick={() => setViewMode('import')}
+              className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs transition shadow"
+            >
+              <Upload className="w-3.5 h-3.5" /> Migrate / Upload CSV
+            </button>
+          )}
+
           {!token ? (
             <button
               onClick={() => handleSyncToSheets(false)}
@@ -741,7 +751,27 @@ export default function Dashboard() {
             <Crown className="w-3.5 h-3.5 text-sky-400" /> Org Roster & Offboarding
           </button>
         )}
+
+        {(isMD || isIT) && (
+          <button
+            onClick={() => setViewMode('import')}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'import' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <Upload className="w-3.5 h-3.5 text-amber-400" /> Data Upload / Switch CRM
+          </button>
+        )}
       </div>
+
+      {/* Screen: Data Import & Onboarding Wizard */}
+      {viewMode === 'import' && (isMD || isIT) && (
+        <DataImportWizard
+          currentUser={senderName}
+          onImportComplete={() => {
+            loadData();
+            triggerDebouncedSync();
+          }}
+        />
+      )}
 
       {/* Screen: Telephony & CTI */}
       {viewMode === 'telephony' && (isMD || allowedTabs.includes('telephony')) && (
@@ -863,7 +893,19 @@ export default function Dashboard() {
                           )}
                         </div>
 
-                        <div className="flex items-center justify-between text-[10px] text-slate-400 truncate"><span>{c.email}</span>{c.phone && <a href={`tel:${c.phone.replace(/[^0-9+]/g, "")}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-0.5 text-emerald-400 hover:text-emerald-300 font-mono"><PhoneCall className="w-2.5 h-2.5" />{c.phone}</a>}</div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 truncate">
+                          <span>{c.email}</span>
+                          {c.phone && (
+                            <a
+                              href={`tel:${c.phone.replace(/[^0-9+]/g, '')}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-0.5 text-emerald-400 hover:text-emerald-300 font-mono"
+                            >
+                              <PhoneCall className="w-2.5 h-2.5" />
+                              {c.phone}
+                            </a>
+                          )}
+                        </div>
 
                         <div className="flex items-center gap-1 pt-1 border-t border-slate-800/60">
                           {!isFirstCol && (
