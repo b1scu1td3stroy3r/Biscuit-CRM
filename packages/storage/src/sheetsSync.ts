@@ -2,6 +2,56 @@ import { db } from './db';
 
 const STORAGE_KEY_SHEET_ID = 'biscuit_crm_pipeline_sheet_id';
 
+export async function pullContactsFromGoogleSheet(accessToken: string, folderId: string) {
+  let sheetId = localStorage.getItem(STORAGE_KEY_SHEET_ID);
+
+  // If local storage has no cached sheet ID, query Drive for Biscuit_CRM_Pipeline_Master
+  if (!sheetId) {
+    const query = encodeURIComponent(`name = 'Biscuit_CRM_Pipeline_Master' and trashed = false`);
+    const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const searchData = await searchRes.json();
+    if (searchData.files && searchData.files.length > 0) {
+      sheetId = searchData.files[0].id;
+      localStorage.setItem(STORAGE_KEY_SHEET_ID, sheetId as string);
+    } else {
+      return { importedCount: 0, sheetId: null };
+    }
+  }
+
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Contacts!A2:H?majorDimension=ROWS`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+
+  if (!res.ok) return { importedCount: 0, sheetId };
+  const data = await res.json();
+  const rows = data.values || [];
+  let importedCount = 0;
+
+  for (const r of rows) {
+    if (!r[1]) continue;
+    const email = r[4] || '';
+    const existing = await db.contacts.where('email').equals(email).first();
+    if (!existing) {
+      await db.contacts.add({
+        name: r[1],
+        company: r[2] || '',
+        crn: r[3] || '',
+        email: email,
+        phone: r[5] || '',
+        stage: (r[6] as any) || 'Lead',
+        synced: true,
+        updatedAt: r[7] || new Date().toISOString(),
+      });
+      importedCount++;
+    }
+  }
+
+  return { importedCount, sheetId };
+}
+
 export async function syncOutboxToGoogleSheets(accessToken: string, folderId?: string) {
   const pendingMutations = await db.outbox.toArray();
   const contacts = await db.contacts.toArray();
@@ -10,7 +60,6 @@ export async function syncOutboxToGoogleSheets(accessToken: string, folderId?: s
     return { syncedCount: 0, sheetId: null };
   }
 
-  // 1. Get existing Sheet ID from local cache or create a fresh one directly via Sheets API
   let sheetId = localStorage.getItem(STORAGE_KEY_SHEET_ID);
 
   if (!sheetId) {
@@ -21,17 +70,8 @@ export async function syncOutboxToGoogleSheets(accessToken: string, folderId?: s
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        properties: {
-          title: 'Biscuit_CRM_Pipeline_Master',
-        },
-        sheets: [
-          {
-            properties: {
-              title: 'Contacts',
-              gridProperties: { rowCount: 100, columnCount: 10 },
-            },
-          },
-        ],
+        properties: { title: 'Biscuit_CRM_Pipeline_Master' },
+        sheets: [{ properties: { title: 'Contacts', gridProperties: { rowCount: 100, columnCount: 10 } } }],
       }),
     });
 
@@ -44,7 +84,6 @@ export async function syncOutboxToGoogleSheets(accessToken: string, folderId?: s
     sheetId = createdSheet.spreadsheetId;
     localStorage.setItem(STORAGE_KEY_SHEET_ID, sheetId as string);
 
-    // If folderId is present, attempt to organize it into Biscuit_CRM folder non-blockingly
     if (folderId && sheetId) {
       try {
         await fetch(`https://www.googleapis.com/drive/v3/files/${sheetId}?addParents=${folderId}&fields=id,parents`, {
@@ -52,12 +91,11 @@ export async function syncOutboxToGoogleSheets(accessToken: string, folderId?: s
           headers: { Authorization: `Bearer ${accessToken}` },
         });
       } catch (e) {
-        console.warn('Could not move file to folder, sheet remains in root Drive:', e);
+        console.warn('Could not move file to folder:', e);
       }
     }
   }
 
-  // 2. Format contacts into spreadsheet table rows
   const rows = [
     ['Contact ID', 'Contact Name', 'Company Name', 'CRN', 'Email', 'Phone', 'Lifecycle Stage', 'Updated Timestamp'],
     ...contacts.map((c) => [
@@ -72,7 +110,6 @@ export async function syncOutboxToGoogleSheets(accessToken: string, folderId?: s
     ]),
   ];
 
-  // 3. Populate Contacts tab
   const updateRes = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Contacts!A1?valueInputOption=USER_ENTERED`,
     {
@@ -94,7 +131,6 @@ export async function syncOutboxToGoogleSheets(accessToken: string, folderId?: s
     throw new Error(errData.error?.message || 'Failed to update Google Sheet rows');
   }
 
-  // 4. Mark Dexie IndexedDB records as synced and purge outbox
   await db.contacts.toCollection().modify({ synced: true });
   await db.outbox.clear();
 
