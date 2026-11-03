@@ -592,6 +592,17 @@ export default function Dashboard() {
   const isMD = department === 'MD';
   const isIT = department === 'IT';
   const allowedTabs = DEPARTMENT_CONFIG[department].allowedTabs;
+  const allTemplates = [
+    ...DEFAULT_TEMPLATES,
+    ...customTemplates.map(t => ({
+      id: `stored_${t.id}`,
+      category: t.category,
+      title: t.title,
+      subject: t.subject,
+      body: t.body,
+      isCustom: true,
+    })),
+  ];
   const CurrentDeptIcon = DEPARTMENT_CONFIG[department].icon;
 
   return (
