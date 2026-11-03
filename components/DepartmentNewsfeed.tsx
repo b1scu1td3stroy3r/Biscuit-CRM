@@ -29,55 +29,11 @@ export default function DepartmentNewsfeed({
   });
 
   const loadNews = async () => {
-    let items = await db.newsFeed.toArray();
-
-    if (items.length === 0) {
-      const now = new Date();
-      const initialSeed: NewsItem[] = [
-        {
-          title: 'David Miller achieved Level 3: Core Practitioner!',
-          content: 'David reached 450 XP after successfully advancing accounts through Logistics SLA.',
-          category: 'Level Up',
-          department: 'Company-Wide',
-          actor: 'System',
-          badgeColor: 'border-amber-500/30 text-amber-300 bg-amber-500/10',
-          createdAt: new Date(now.getTime() - 2 * 3600000).toISOString(),
-        },
-        {
-          title: '£14,400 Retainer Invoice Settled by Revolut',
-          content: 'Finance confirmed full settlement of invoice #INV-10001 (VAT receipt generated).',
-          category: 'Invoice Paid',
-          department: 'Finance',
-          actor: 'Elena Rostova',
-          badgeColor: 'border-emerald-500/30 text-emerald-300 bg-emerald-500/10',
-          createdAt: new Date(now.getTime() - 5 * 3600000).toISOString(),
-        },
-        {
-          title: 'Team Announcement: Maternity Leave for Sophie Taylor',
-          content: 'Sophie begins maternity leave starting next Monday. Handover accounts delegated to Sales.',
-          category: 'Maternity / Leave',
-          department: 'Company-Wide',
-          actor: 'HR Desk',
-          badgeColor: 'border-purple-500/30 text-purple-300 bg-purple-500/10',
-          createdAt: new Date(now.getTime() - 24 * 3600000).toISOString(),
-        },
-        {
-          title: 'Deal Closed: £8,500 Dyson Procurement Contract',
-          content: 'Sarah Jenkins moved Dyson from Commercial Negotiation into Customer Service onboarding.',
-          category: 'Deal Closed',
-          department: 'Sales',
-          actor: 'Sarah Jenkins',
-          badgeColor: 'border-sky-500/30 text-sky-300 bg-sky-500/10',
-          createdAt: new Date(now.getTime() - 30 * 3600000).toISOString(),
-        },
-      ];
-
-      for (const item of initialSeed) {
-        await db.newsFeed.add(item);
-      }
-      items = await db.newsFeed.toArray();
-    }
-
+    await db.newsFeed.where('title').startsWith('David Miller').delete();
+    await db.newsFeed.where('title').startsWith('£14,400').delete();
+    await db.newsFeed.where('title').startsWith('Team Announcement: Maternity').delete();
+    await db.newsFeed.where('title').startsWith('Deal Closed: £8,500').delete();
+    const items = await db.newsFeed.toArray();
     setNews(items.reverse());
   };
 
@@ -104,7 +60,7 @@ export default function DepartmentNewsfeed({
     };
 
     await db.newsFeed.add(payload);
-    onAwardXP(15, `Broadcasted department news update: ${payload.title}`);
+    onAwardXP(15, `Broadcasted update: ${payload.title}`);
     setPostForm({ title: '', content: '', category: 'Announcement', isCompanyWide: true });
     setIsPosting(false);
     await loadNews();
@@ -182,7 +138,6 @@ export default function DepartmentNewsfeed({
         </div>
       </div>
 
-      {/* Manual Broadcast Form */}
       {isPosting && (
         <form onSubmit={handlePostNews} className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
@@ -190,7 +145,7 @@ export default function DepartmentNewsfeed({
               <label className="text-[11px] font-semibold text-slate-400 block mb-1">Headline</label>
               <input
                 type="text"
-                placeholder="e.g. Elena Rostova promoted to Head of Accounts!"
+                placeholder="e.g. Approved Q1 marketing initiative or team promotion"
                 value={postForm.title}
                 onChange={(e) => setPostForm({ ...postForm, title: e.target.value })}
                 className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400"
@@ -218,7 +173,7 @@ export default function DepartmentNewsfeed({
             <label className="text-[11px] font-semibold text-slate-400 block mb-1">Context / Details</label>
             <textarea
               rows={2}
-              placeholder="e.g. Congratulate Elena on completing her tier progression with outstanding metrics..."
+              placeholder="Additional details, scope, or notes for the team..."
               value={postForm.content}
               onChange={(e) => setPostForm({ ...postForm, content: e.target.value })}
               className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400"
@@ -233,7 +188,7 @@ export default function DepartmentNewsfeed({
                 onChange={(e) => setPostForm({ ...postForm, isCompanyWide: e.target.checked })}
                 className="rounded border-slate-700 bg-slate-900 text-amber-500"
               />
-              <span>Broadcast Company-Wide (All Departments)</span>
+              <span>Broadcast Company-Wide</span>
             </label>
 
             <button
@@ -246,7 +201,6 @@ export default function DepartmentNewsfeed({
         </form>
       )}
 
-      {/* News Stream Feed Items */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 max-h-72 overflow-y-auto pr-1">
         {filteredNews.map((item) => (
           <div
@@ -275,8 +229,9 @@ export default function DepartmentNewsfeed({
         ))}
 
         {filteredNews.length === 0 && (
-          <div className="col-span-full py-8 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl">
-            No recent activity recorded for this channel.
+          <div className="col-span-full py-8 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl space-y-1">
+            <p className="font-semibold text-slate-400">Workspace Activity Stream Ready</p>
+            <p className="text-[11px]">Real company milestones (deals closed, settled invoices, promotions, level-ups) will appear here live as your team works.</p>
           </div>
         )}
       </div>
