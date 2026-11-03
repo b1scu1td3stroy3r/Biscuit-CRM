@@ -14,6 +14,7 @@ import { logAuditEvent } from '../packages/storage/src/auditLogger';
 import { DEFAULT_TEMPLATES, replaceTokens, TemplateItem } from '../packages/templates/src/templates';
 import CommandPalette from '../components/CommandPalette';
 import HealthWizard from '../components/HealthWizard';
+import DealDetailDrawer from '../components/DealDetailDrawer';
 
 declare global {
   interface Window {
@@ -46,6 +47,8 @@ export default function Dashboard() {
 
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isHealthOpen, setIsHealthOpen] = useState(false);
+  const [selectedDealForDrawer, setSelectedDealForDrawer] = useState<Contact | null>(null);
+
   const [senderName, setSenderName] = useState<string>('Account Executive');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -153,9 +156,9 @@ export default function Dashboard() {
       const res = await syncOutboxToGoogleSheets(activeToken, folderId);
       if (res.sheetId) setLastSyncedSheetId(res.sheetId);
       await loadData();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Sync failed. Please check browser console.');
+      alert(`Sync failed: ${err.message || err}`);
     } finally {
       setIsSyncing(false);
     }
@@ -168,7 +171,7 @@ export default function Dashboard() {
       const res = await pullContactsFromGoogleSheet(activeToken, folderId);
       if (res.sheetId) setLastSyncedSheetId(res.sheetId);
       await loadData();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       alert(`Sync pull failed: ${err.message || err}`);
     } finally {
@@ -210,6 +213,9 @@ export default function Dashboard() {
     }).catch(console.warn);
 
     await loadData();
+    if (selectedDealForDrawer?.id === contact.id) {
+      setSelectedDealForDrawer({ ...contact, stage: nextStage, updatedAt: now });
+    }
   };
 
   const handleCreateTask = async (e: React.FormEvent) => {
@@ -520,6 +526,194 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Kanban View */}
+      {viewMode === 'kanban' && (
+        <section className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+          {PIPELINE_STAGES.map((col, idx) => {
+            const colContacts = contacts.filter(c => c.stage === col.key);
+            const isLastCol = idx === PIPELINE_STAGES.length - 1;
+
+            return (
+              <div key={col.key} className="rounded-xl border border-slate-800 bg-slate-900/40 p-3 flex flex-col min-h-[460px]">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${col.color}`}>
+                    {col.label}
+                  </span>
+                  <span className="text-xs font-mono text-slate-500">{colContacts.length}</span>
+                </div>
+
+                <div className="space-y-3 flex-1 overflow-y-auto">
+                  {colContacts.map(c => (
+                    <div 
+                      key={c.id} 
+                      onClick={() => setSelectedDealForDrawer(c)}
+                      className="p-3.5 rounded-lg border border-slate-800 bg-slate-900/90 hover:border-amber-500/60 transition shadow-sm space-y-2.5 cursor-pointer group"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="font-semibold text-slate-100 text-sm leading-tight group-hover:text-amber-400 transition-colors">
+                            {c.name}
+                          </div>
+                          <div className="text-[11px] text-slate-400 mt-0.5">{c.company}</div>
+                        </div>
+                        {c.synced ? (
+                          <span className="w-2 h-2 rounded-full bg-emerald-400" title="Synced to Sheets" />
+                        ) : (
+                          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Outbox Queue" />
+                        )}
+                      </div>
+
+                      {c.crn && (
+                        <div className="text-[10px] font-mono text-sky-400 bg-sky-950/40 border border-sky-900/40 px-2 py-0.5 rounded w-fit">
+                          CRN: {c.crn}
+                        </div>
+                      )}
+
+                      <div className="text-[11px] text-slate-400 truncate">{c.email}</div>
+
+                      {!isLastCol && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            advanceStage(c);
+                          }}
+                          className="w-full mt-2 inline-flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700/60 transition"
+                        >
+                          <span>Move Next</span>
+                          <ChevronRight className="w-3.5 h-3.5 text-amber-400" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+
+                  {colContacts.length === 0 && (
+                    <div className="h-28 border border-dashed border-slate-800/80 rounded-lg flex items-center justify-center text-[11px] text-slate-600">
+                      Empty stage
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      )}
+
+      {/* Table View */}
+      {viewMode === 'table' && (
+        <section className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden mb-8">
+          <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+            <h2 className="font-semibold text-slate-200 text-sm">All Pipeline Contacts</h2>
+            <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full">{contacts.length} Records</span>
+          </div>
+          <table className="w-full text-left text-sm text-slate-300">
+            <thead className="bg-slate-900/80 text-xs uppercase text-slate-400 border-b border-slate-800">
+              <tr>
+                <th className="px-6 py-3">Contact</th>
+                <th className="px-6 py-3">Company & CRN</th>
+                <th className="px-6 py-3">Stage</th>
+                <th className="px-6 py-3">Sync Status</th>
+                <th className="px-6 py-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800">
+              {contacts.map((c) => (
+                <tr 
+                  key={c.id} 
+                  onClick={() => setSelectedDealForDrawer(c)}
+                  className="hover:bg-slate-800/30 cursor-pointer"
+                >
+                  <td className="px-6 py-4">
+                    <div className="font-semibold text-slate-100 hover:text-amber-400">{c.name}</div>
+                    <div className="text-xs text-slate-400">{c.email}</div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div>{c.company || '—'}</div>
+                    {c.crn && <span className="text-xs font-mono text-sky-400">CRN: {c.crn}</span>}
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="px-2.5 py-1 text-xs rounded-full bg-slate-800 text-amber-300 border border-slate-700">
+                      {c.stage}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    {c.synced ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Synced
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-amber-400 font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+                        Outbox Queued
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        advanceStage(c);
+                      }}
+                      className="inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300"
+                    >
+                      Advance Stage <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {/* Gantt View */}
+      {viewMode === 'gantt' && (
+        <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-6 mb-8">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-6">
+            <div>
+              <h2 className="font-semibold text-slate-100 text-base flex items-center gap-2">
+                <Clock className="w-5 h-5 text-indigo-400" /> Project Milestones & Interactive Gantt
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">Tasks auto-sync as all-day events on your connected Google Calendar</p>
+            </div>
+            <span className="text-xs font-mono bg-slate-800 text-slate-300 px-3 py-1 rounded-full">{tasks.length} Active Tasks</span>
+          </div>
+
+          {tasks.length === 0 ? (
+            <div className="py-14 text-center text-slate-500 text-sm">
+              No milestones scheduled yet. Click <strong>+ New Calendar Milestone</strong> to plan your first project phase.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {tasks.map((task) => (
+                <div key={task.id} className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <h4 className="font-semibold text-slate-200 text-sm">{task.title}</h4>
+                      <p className="text-xs text-slate-400">{task.companyName} &bull; {task.startDate} to {task.endDate}</p>
+                    </div>
+                    <span className="inline-flex items-center gap-1 text-xs text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      <CalendarIcon className="w-3 h-3" /> Synced to Calendar
+                    </span>
+                  </div>
+
+                  <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden mt-3">
+                    <div 
+                      className="bg-gradient-to-r from-indigo-500 to-amber-500 h-full rounded-full transition-all duration-500" 
+                      style={{ width: `${task.progress}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] text-slate-500 mt-1 font-mono">
+                    <span>{task.startDate}</span>
+                    <span>Progress: {task.progress}%</span>
+                    <span>{task.endDate}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Template Vault View */}
       {viewMode === 'templates' && (
         <section className="space-y-6 mb-8">
@@ -627,177 +821,13 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Kanban View */}
-      {viewMode === 'kanban' && (
-        <section className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
-          {PIPELINE_STAGES.map((col, idx) => {
-            const colContacts = contacts.filter(c => c.stage === col.key);
-            const isLastCol = idx === PIPELINE_STAGES.length - 1;
-
-            return (
-              <div key={col.key} className="rounded-xl border border-slate-800 bg-slate-900/40 p-3 flex flex-col min-h-[460px]">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3">
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${col.color}`}>
-                    {col.label}
-                  </span>
-                  <span className="text-xs font-mono text-slate-500">{colContacts.length}</span>
-                </div>
-
-                <div className="space-y-3 flex-1 overflow-y-auto">
-                  {colContacts.map(c => (
-                    <div key={c.id} className="p-3.5 rounded-lg border border-slate-800 bg-slate-900/90 hover:border-slate-700 transition shadow-sm space-y-2.5">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="font-semibold text-slate-100 text-sm leading-tight">{c.name}</div>
-                          <div className="text-[11px] text-slate-400 mt-0.5">{c.company}</div>
-                        </div>
-                        {c.synced ? (
-                          <span className="w-2 h-2 rounded-full bg-emerald-400" title="Synced to Sheets" />
-                        ) : (
-                          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Outbox Queue" />
-                        )}
-                      </div>
-
-                      {c.crn && (
-                        <div className="text-[10px] font-mono text-sky-400 bg-sky-950/40 border border-sky-900/40 px-2 py-0.5 rounded w-fit">
-                          CRN: {c.crn}
-                        </div>
-                      )}
-
-                      <div className="text-[11px] text-slate-400 truncate">{c.email}</div>
-
-                      {!isLastCol && (
-                        <button
-                          onClick={() => advanceStage(c)}
-                          className="w-full mt-2 inline-flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700/60 transition group"
-                        >
-                          <span>Move Next</span>
-                          <ChevronRight className="w-3.5 h-3.5 text-amber-400 group-hover:translate-x-0.5 transition-transform" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-
-                  {colContacts.length === 0 && (
-                    <div className="h-28 border border-dashed border-slate-800/80 rounded-lg flex items-center justify-center text-[11px] text-slate-600">
-                      Empty stage
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </section>
-      )}
-
-      {/* Table View */}
-      {viewMode === 'table' && (
-        <section className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden mb-8">
-          <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-            <h2 className="font-semibold text-slate-200 text-sm">All Pipeline Contacts</h2>
-            <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full">{contacts.length} Records</span>
-          </div>
-          <table className="w-full text-left text-sm text-slate-300">
-            <thead className="bg-slate-900/80 text-xs uppercase text-slate-400 border-b border-slate-800">
-              <tr>
-                <th className="px-6 py-3">Contact</th>
-                <th className="px-6 py-3">Company & CRN</th>
-                <th className="px-6 py-3">Stage</th>
-                <th className="px-6 py-3">Sync Status</th>
-                <th className="px-6 py-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">
-              {contacts.map((c) => (
-                <tr key={c.id} className="hover:bg-slate-800/30">
-                  <td className="px-6 py-4">
-                    <div className="font-semibold text-slate-100">{c.name}</div>
-                    <div className="text-xs text-slate-400">{c.email}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div>{c.company || '—'}</div>
-                    {c.crn && <span className="text-xs font-mono text-sky-400">CRN: {c.crn}</span>}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="px-2.5 py-1 text-xs rounded-full bg-slate-800 text-amber-300 border border-slate-700">
-                      {c.stage}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    {c.synced ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Synced
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-amber-400 font-medium">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
-                        Outbox Queued
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => advanceStage(c)}
-                      className="inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300"
-                    >
-                      Advance Stage <ArrowRight className="w-3 h-3" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
-
-      {/* Gantt View */}
-      {viewMode === 'gantt' && (
-        <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-6 mb-8">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-6">
-            <div>
-              <h2 className="font-semibold text-slate-100 text-base flex items-center gap-2">
-                <Clock className="w-5 h-5 text-indigo-400" /> Project Milestones & Interactive Gantt
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">Tasks auto-sync as all-day events on your connected Google Calendar</p>
-            </div>
-            <span className="text-xs font-mono bg-slate-800 text-slate-300 px-3 py-1 rounded-full">{tasks.length} Active Tasks</span>
-          </div>
-
-          {tasks.length === 0 ? (
-            <div className="py-14 text-center text-slate-500 text-sm">
-              No milestones scheduled yet. Click <strong>+ New Calendar Milestone</strong> to plan your first project phase.
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {tasks.map((task) => (
-                <div key={task.id} className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <h4 className="font-semibold text-slate-200 text-sm">{task.title}</h4>
-                      <p className="text-xs text-slate-400">{task.companyName} &bull; {task.startDate} to {task.endDate}</p>
-                    </div>
-                    <span className="inline-flex items-center gap-1 text-xs text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                      <CalendarIcon className="w-3 h-3" /> Synced to Calendar
-                    </span>
-                  </div>
-
-                  <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden mt-3">
-                    <div 
-                      className="bg-gradient-to-r from-indigo-500 to-amber-500 h-full rounded-full transition-all duration-500" 
-                      style={{ width: `${task.progress}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between items-center text-[10px] text-slate-500 mt-1 font-mono">
-                    <span>{task.startDate}</span>
-                    <span>Progress: {task.progress}%</span>
-                    <span>{task.endDate}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
+      {/* Slide-Over Deal Detail & History Drawer */}
+      <DealDetailDrawer
+        contact={selectedDealForDrawer}
+        isOpen={Boolean(selectedDealForDrawer)}
+        onClose={() => setSelectedDealForDrawer(null)}
+        onAdvanceStage={advanceStage}
+      />
 
       {/* Global Command Palette Component */}
       <CommandPalette
