@@ -10,12 +10,13 @@ import {
   Target, RotateCcw, Laptop, Briefcase, HeartHandshake, Megaphone, Wrench, PoundSterling, Crown,
   Lock, UserX
 } from 'lucide-react';
-import { db, Contact, ProjectTask, StoredTemplate, AuditRecord, DepartmentRole } from '../packages/storage/src/db';
+import { db, Contact, ProjectTask, StoredTemplate, AuditRecord, DepartmentRole, EmployeeProfile } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
 import { syncTaskToGoogleCalendar } from '../packages/storage/src/calendarSync';
 import { logAuditEvent } from '../packages/storage/src/auditLogger';
 import { exportPipelineToCSV, exportAuditLogsToCSV } from '../packages/storage/src/exportUtils';
 import { DEFAULT_TEMPLATES, replaceTokens, TemplateItem } from '../packages/templates/src/templates';
+import { resolveUserWorkspace, UserWorkspaceConfig } from '../packages/storage/src/workspaceManager';
 import CommandPalette from '../components/CommandPalette';
 import HealthWizard from '../components/HealthWizard';
 import DealDetailDrawer from '../components/DealDetailDrawer';
@@ -145,57 +146,12 @@ function calculateSLAStatus(contact: Contact): SLAStatus {
   };
 }
 
-function getMilestoneConfigForStage(stage: StageType, companyOrName: string) {
-  const today = new Date();
-  const format = (d: Date) => d.toISOString().slice(0, 10);
-
-  if (stage === 'Procurement') {
-    const end = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
-    return {
-      title: `Procurement & Supplier Agreement (${companyOrName})`,
-      startDate: format(today),
-      endDate: format(end),
-      progress: 15,
-    };
-  }
-
-  if (stage === 'Logistics') {
-    const end = new Date(today.getTime() + 5 * 24 * 60 * 60 * 1000);
-    return {
-      title: `Logistics Dispatch & Delivery Window (${companyOrName})`,
-      startDate: format(today),
-      endDate: format(end),
-      progress: 40,
-    };
-  }
-
-  if (stage === 'Customer Service') {
-    const end = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000);
-    return {
-      title: `Post-Onboarding Review & Retention SLA (${companyOrName})`,
-      startDate: format(today),
-      endDate: format(end),
-      progress: 80,
-    };
-  }
-
-  if (stage === 'Winback') {
-    const end = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-    return {
-      title: `Winback Re-engagement Outreach (${companyOrName})`,
-      startDate: format(today),
-      endDate: format(end),
-      progress: 10,
-    };
-  }
-
-  return null;
-}
-
 export default function Dashboard() {
   const [department, setDepartment] = useState<DepartmentRole>('MD');
   const [token, setToken] = useState<string | null>(null);
-  const [folderId] = useState<string>('1WK1GE6vGTuS1KGCC607Jdkcc6464YaST');
+  const [folderId, setFolderId] = useState<string>('');
+  const [workspaceConfig, setWorkspaceConfig] = useState<UserWorkspaceConfig | null>(null);
+
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [customTemplates, setCustomTemplates] = useState<StoredTemplate[]>([]);
@@ -211,8 +167,8 @@ export default function Dashboard() {
   const [isHealthOpen, setIsHealthOpen] = useState(false);
   const [selectedDealForDrawer, setSelectedDealForDrawer] = useState<Contact | null>(null);
 
-  const [senderName, setSenderName] = useState<string>('Sarah Jenkins');
-  const [supervisorEmail, setSupervisorEmail] = useState<string>('sales.lead@biscuitcrm.internal');
+  const [senderName, setSenderName] = useState<string>('Managing Director');
+  const [supervisorEmail, setSupervisorEmail] = useState<string>('');
 
   const [regressingContact, setRegressingContact] = useState<Contact | null>(null);
   const [regressionReasonCategory, setRegressionReasonCategory] = useState<string>('Client Requested Timeline Postponement');
@@ -242,9 +198,9 @@ export default function Dashboard() {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [newTask, setNewTask] = useState({
     title: '',
-    companyName: 'Revolut',
-    startDate: '2026-11-05',
-    endDate: '2026-11-12',
+    companyName: '',
+    startDate: new Date().toISOString().slice(0, 10),
+    endDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
     progress: 25,
   });
 
@@ -265,6 +221,8 @@ export default function Dashboard() {
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const SCOPES = [
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
     'https://www.googleapis.com/auth/drive.file',
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/calendar.events',
@@ -286,14 +244,18 @@ export default function Dashboard() {
     const taskList = await db.projects.toArray();
     const storedTpls = await db.templates.toArray();
     const storedAudits = await db.auditLogs.toArray();
+    const roster = await db.employees.toArray();
 
     setContacts(contactList);
     setTasks(taskList);
     setCustomTemplates(storedTpls);
     setAuditLogs(storedAudits);
 
+    // Sole Trader & Single Employee Auto-MD Assumption Rule
     const savedDept = localStorage.getItem('biscuit_crm_user_department') as DepartmentRole;
-    if (savedDept && DEPARTMENT_CONFIG[savedDept]) {
+    if (roster.length <= 1) {
+      setDepartment('MD');
+    } else if (savedDept && DEPARTMENT_CONFIG[savedDept]) {
       setDepartment(savedDept);
       setViewMode(DEPARTMENT_CONFIG[savedDept].defaultTab);
     }
@@ -307,17 +269,6 @@ export default function Dashboard() {
     if (contactList.length > 0 && !selectedContactForTemplate) {
       setSelectedContactForTemplate(contactList[0]);
     }
-    const cachedSheet = localStorage.getItem('biscuit_crm_pipeline_sheet_id');
-    if (cachedSheet) setLastSyncedSheetId(cachedSheet);
-
-    const cachedAudit = localStorage.getItem('biscuit_crm_audit_sheet_id');
-    if (cachedAudit) setAuditSheetId(cachedAudit);
-  };
-
-  const handleSelectDepartment = (dept: DepartmentRole) => {
-    setDepartment(dept);
-    localStorage.setItem('biscuit_crm_user_department', dept);
-    setViewMode(DEPARTMENT_CONFIG[dept].defaultTab);
   };
 
   const authenticateToken = useCallback((): Promise<string> => {
@@ -328,10 +279,29 @@ export default function Dashboard() {
       const client = window.google.accounts.oauth2.initTokenClient({
         client_id: clientId,
         scope: SCOPES,
-        callback: (response: any) => {
+        callback: async (response: any) => {
           if (response.error) return reject(response);
-          setToken(response.access_token);
-          resolve(response.access_token);
+          const accessToken = response.access_token;
+          setToken(accessToken);
+
+          try {
+            // Dynamically bind to the user's private Google workspace
+            const ws = await resolveUserWorkspace(accessToken);
+            setWorkspaceConfig(ws);
+            setFolderId(ws.driveFolderId);
+            setSenderName(ws.userName);
+
+            // If personal Google account (@gmail.com) or sole user -> assume Managing Director
+            const roster = await db.employees.toArray();
+            if (ws.isPersonalAccount || roster.length <= 1) {
+              setDepartment('MD');
+              localStorage.setItem('biscuit_crm_user_department', 'MD');
+            }
+          } catch (wsErr) {
+            console.warn('Workspace provisioning fallback:', wsErr);
+          }
+
+          resolve(accessToken);
         },
       });
       client.requestAccessToken();
@@ -343,7 +313,16 @@ export default function Dashboard() {
     setIsSyncing(true);
     try {
       const activeToken = await authenticateToken();
-      const res = await syncOutboxToGoogleSheets(activeToken, folderId);
+      let targetFolder = folderId;
+
+      if (!targetFolder) {
+        const ws = await resolveUserWorkspace(activeToken);
+        targetFolder = ws.driveFolderId;
+        setFolderId(targetFolder);
+        setWorkspaceConfig(ws);
+      }
+
+      const res = await syncOutboxToGoogleSheets(activeToken, targetFolder);
       if (res.sheetId) setLastSyncedSheetId(res.sheetId);
       await loadData();
     } catch (err: any) {
@@ -389,6 +368,12 @@ export default function Dashboard() {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
   }, [handleSyncToSheets]);
+
+  const handleSelectDepartment = (dept: DepartmentRole) => {
+    setDepartment(dept);
+    localStorage.setItem('biscuit_crm_user_department', dept);
+    setViewMode(DEPARTMENT_CONFIG[dept].defaultTab);
+  };
 
   const handleOpenAddModal = (presetStage?: StageType) => {
     setNewContact({
@@ -442,59 +427,22 @@ export default function Dashboard() {
         await db.employees.update(profile.id, { xp: updatedXP, level: updatedLevel });
       }
     } catch (xpErr) {
-      console.warn('Could not increment XP on stage advance:', xpErr);
+      console.warn('XP increment deferred:', xpErr);
     }
 
-    const milestoneConfig = getMilestoneConfigForStage(nextStage, contact.company || contact.name);
-
     authenticateToken().then(async (t) => {
-      let createdEventId: string | undefined;
-
-      if (milestoneConfig) {
-        try {
-          createdEventId = await syncTaskToGoogleCalendar(t, {
-            title: milestoneConfig.title,
-            companyName: contact.company || contact.name,
-            startDate: milestoneConfig.startDate,
-            endDate: milestoneConfig.endDate,
-            progress: milestoneConfig.progress,
-            synced: true,
-            updatedAt: now,
-          });
-
-          await db.projects.add({
-            title: milestoneConfig.title,
-            companyName: contact.company || contact.name,
-            startDate: milestoneConfig.startDate,
-            endDate: milestoneConfig.endDate,
-            progress: milestoneConfig.progress,
-            calendarEventId: createdEventId,
-            synced: true,
-            updatedAt: now,
-          });
-        } catch (calErr) {
-          console.warn('Milestone calendar auto-creation deferred:', calErr);
-        }
+      if (folderId) {
+        await logAuditEvent(t, folderId, {
+          timestamp: now,
+          actor: senderName,
+          action: 'UPDATE_STAGE',
+          entityId: `Contact_${contact.id}`,
+          details: `Advanced stage to "${nextStage}" for ${contact.name} [${contact.accountNumber}]`,
+        });
       }
-
-      await logAuditEvent(t, folderId, {
-        timestamp: now,
-        actor: senderName,
-        action: 'UPDATE_STAGE',
-        entityId: `Contact_${contact.id}`,
-        details: `Advanced stage to "${nextStage}" for ${contact.name} [${contact.accountNumber}]${
-          milestoneConfig ? ` & auto-scheduled GCal delivery milestone "${milestoneConfig.title}"` : ''
-        }`,
-      });
-
-      const cachedAudit = localStorage.getItem('biscuit_crm_audit_sheet_id');
-      if (cachedAudit) setAuditSheetId(cachedAudit);
     }).catch(console.warn);
 
     await loadData();
-    if (selectedDealForDrawer?.id === contact.id) {
-      setSelectedDealForDrawer({ ...contact, stage: nextStage, updatedAt: now });
-    }
     triggerDebouncedSync();
   };
 
@@ -518,7 +466,7 @@ export default function Dashboard() {
       const now = new Date().toISOString();
       const dateStr = now.slice(0, 10);
 
-      const regressionEntry = `\n[DEAL REGRESSION ${dateStr}]: Stage reverted from ${regressingContact.stage} back to ${previousStage} by ${senderName}.\nReason Category: ${regressionReasonCategory}\nExplanation: ${regressionNotes}`;
+      const regressionEntry = `\n[DEAL REGRESSION ${dateStr}]: Reverted from ${regressingContact.stage} back to ${previousStage} by ${senderName}.\nReason: ${regressionReasonCategory}\nExplanation: ${regressionNotes}`;
       const updatedInternalNotes = `${regressingContact.internalNotes || ''}${regressionEntry}`;
 
       await db.contacts.update(regressingContact.id, {
@@ -540,37 +488,11 @@ export default function Dashboard() {
         timestamp: Date.now(),
       });
 
-      const assignedRep = regressingContact.accountManager || senderName;
-      const emailSubject = `[URGENT DEAL REGRESSION] ${regressingContact.name} (${regressingContact.company || 'Retail'}) [Ref: ${regressingContact.accountNumber}]`;
-      const emailBody = 
-        `ATTENTION: DEAL REGRESSION NOTIFICATION\n\n` +
-        `Customer deal moved backwards in pipeline.\n\n` +
-        `CUSTOMER RECORD:\n` +
-        `• Account Reference: ${regressingContact.accountNumber}\n` +
-        `• Customer Name: ${regressingContact.name}\n` +
-        `• Previous Stage: ${regressingContact.stage}\n` +
-        `• Reverted Stage: ${previousStage}\n` +
-        `• Reverted By: ${senderName}\n\n` +
-        `REASON:\n${regressionReasonCategory}\n\n` +
-        `DETAILS:\n${regressionNotes}`;
-
       setPostRegressionDraft({
-        subject: emailSubject,
-        body: emailBody,
-        recipient: `${supervisorEmail}`,
+        subject: `[URGENT DEAL REGRESSION] ${regressingContact.name} [Ref: ${regressingContact.accountNumber}]`,
+        body: `DEAL REGRESSION NOTIFICATION\n\nAccount: ${regressingContact.accountNumber}\nName: ${regressingContact.name}\nPrevious: ${regressingContact.stage}\nReverted To: ${previousStage}\nReason: ${regressionReasonCategory}\nNotes: ${regressionNotes}`,
+        recipient: supervisorEmail || senderName,
       });
-
-      authenticateToken().then(async (t) => {
-        await logAuditEvent(t, folderId, {
-          timestamp: now,
-          actor: senderName,
-          action: 'UPDATE_STAGE',
-          entityId: `Contact_${regressingContact.id}`,
-          details: `Reverted stage backward from "${regressingContact.stage}" to "${previousStage}" for ${regressingContact.name} [${regressingContact.accountNumber}]. Reason: ${regressionReasonCategory} - ${regressionNotes}`,
-        });
-        const cachedAudit = localStorage.getItem('biscuit_crm_audit_sheet_id');
-        if (cachedAudit) setAuditSheetId(cachedAudit);
-      }).catch(console.warn);
 
       await loadData();
       triggerDebouncedSync();
@@ -589,9 +511,36 @@ export default function Dashboard() {
     setPostRegressionDraft(null);
   };
 
+  const handleCreateContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newContact.name || !newContact.email) return;
+
+    const assignedAcc = newContact.accountNumber || `ACC-${Math.floor(10000 + Math.random() * 90000)}`;
+
+    await db.contacts.add({
+      ...newContact,
+      accountNumber: assignedAcc,
+      synced: false,
+      updatedAt: new Date().toISOString(),
+    });
+
+    await db.outbox.add({
+      type: 'INSERT',
+      table: 'contacts',
+      payload: { ...newContact, accountNumber: assignedAcc },
+      timestamp: Date.now(),
+    });
+
+    setIsModalOpen(false);
+    await loadData();
+    triggerDebouncedSync();
+  };
+
   const isMD = department === 'MD';
   const isIT = department === 'IT';
   const allowedTabs = DEPARTMENT_CONFIG[department].allowedTabs;
+  const CurrentDeptIcon = DEPARTMENT_CONFIG[department].icon;
+
   const allTemplates = [
     ...DEFAULT_TEMPLATES,
     ...customTemplates.map(t => ({
@@ -603,7 +552,6 @@ export default function Dashboard() {
       isCustom: true,
     })),
   ];
-  const CurrentDeptIcon = DEPARTMENT_CONFIG[department].icon;
 
   return (
     <main className="max-w-[1540px] mx-auto px-6 py-8">
@@ -624,13 +572,19 @@ export default function Dashboard() {
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">Role-Tailored Zero-Storage Operating System</p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {workspaceConfig?.isPersonalAccount
+              ? `Sole Trader Mode (Personal Google Account: ${workspaceConfig.userEmail})`
+              : workspaceConfig
+              ? `Workspace Organization: ${workspaceConfig.domain}`
+              : 'Local-First Zero-Storage Business Operating System'}
+          </p>
         </div>
 
         {/* MD Persona Switcher */}
         {isMD ? (
           <div className="flex flex-wrap items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-amber-500/30">
-            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider px-2">MD Superuser:</span>
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider px-2">MD Console:</span>
             {(['MD', 'Sales', 'Operations', 'Finance', 'HR', 'Marketing', 'IT'] as DepartmentRole[]).map((dept) => {
               const isSelected = department === dept;
               const Icon = DEPARTMENT_CONFIG[dept].icon;
@@ -657,7 +611,7 @@ export default function Dashboard() {
               onClick={() => handleSelectDepartment('MD')}
               className="text-[11px] text-slate-500 hover:text-amber-400 transition flex items-center gap-1"
             >
-              <Crown className="w-3 h-3" /> Switch to MD Login
+              <Crown className="w-3 h-3" /> Unlock MD Mode
             </button>
           </div>
         )}
@@ -679,6 +633,44 @@ export default function Dashboard() {
           </button>
         </div>
       </header>
+
+      {/* Dynamic Persistence Banner tied to the User's OWN Drive */}
+      <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <FolderCheck className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-semibold text-slate-200">
+                User Private Drive Workspace: {folderId ? <code className="font-mono text-emerald-400 text-[11px]">{folderId}</code> : 'Awaiting Google Authentication'}
+              </h3>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Data is private to your Google account. Zero platform telemetry or centralized server storage.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {!token ? (
+            <button
+              onClick={() => handleSyncToSheets(false)}
+              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition"
+            >
+              <Database className="w-3.5 h-3.5" /> Connect Your Google Drive
+            </button>
+          ) : (
+            <button
+              onClick={() => handleSyncToSheets(false)}
+              disabled={isSyncing}
+              className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} /> Sync to Your Drive
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Navigation Tab Bar */}
       <div className="flex bg-slate-900/90 border border-slate-800 rounded-xl p-1 gap-1 mb-6 shadow-sm overflow-x-auto">
