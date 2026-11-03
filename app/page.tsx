@@ -8,7 +8,7 @@ import {
   BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin,
   Cloud, CloudOff, Hash, Users, Download, FileSpreadsheet, AlertTriangle, AlertCircle, Timer,
   Target, RotateCcw, Laptop, Briefcase, HeartHandshake, Megaphone, Wrench, PoundSterling, Crown,
-  Lock
+  Lock, UserX
 } from 'lucide-react';
 import { db, Contact, ProjectTask, StoredTemplate, AuditRecord, DepartmentRole } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
@@ -21,6 +21,7 @@ import HealthWizard from '../components/HealthWizard';
 import DealDetailDrawer from '../components/DealDetailDrawer';
 import EmployeeHub from '../components/EmployeeHub';
 import FinanceDesk from '../components/FinanceDesk';
+import OrgRosterDesk from '../components/OrgRosterDesk';
 
 declare global {
   interface Window {
@@ -29,7 +30,7 @@ declare global {
   }
 }
 
-type ViewTabType = 'kanban' | 'table' | 'gantt' | 'templates' | 'hub' | 'finance';
+type ViewTabType = 'kanban' | 'table' | 'gantt' | 'templates' | 'hub' | 'finance' | 'roster';
 
 const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; color: string; defaultTab: ViewTabType; allowedTabs: ViewTabType[] }> = {
   MD: { 
@@ -37,7 +38,7 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
     icon: Crown, 
     color: 'text-amber-400 bg-amber-500/10 border-amber-500/30', 
     defaultTab: 'kanban',
-    allowedTabs: ['kanban', 'table', 'gantt', 'templates', 'hub', 'finance']
+    allowedTabs: ['kanban', 'table', 'gantt', 'templates', 'hub', 'finance', 'roster']
   },
   Sales: { 
     label: 'Sales & Commercial', 
@@ -72,7 +73,7 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
     icon: Laptop, 
     color: 'text-sky-400 bg-sky-500/10 border-sky-500/20', 
     defaultTab: 'table',
-    allowedTabs: ['table']
+    allowedTabs: ['table', 'roster']
   },
   Finance: { 
     label: 'Finance & Invoicing', 
@@ -434,8 +435,10 @@ export default function Dashboard() {
       const allProfiles = await db.employees.toArray();
       const profile = allProfiles.find(p => p.name.toLowerCase() === senderName.toLowerCase());
       if (profile && profile.id) {
+        const step = profile.tier === 'Staff' ? 200 : 250;
+        const maxLvl = profile.tier === 'Staff' ? 10 : 5;
         const updatedXP = profile.xp + 50;
-        const updatedLevel = Math.floor(updatedXP / 250) + 1;
+        const updatedLevel = Math.min(maxLvl, Math.floor(updatedXP / step) + 1);
         await db.employees.update(profile.id, { xp: updatedXP, level: updatedLevel });
       }
     } catch (xpErr) {
@@ -541,21 +544,15 @@ export default function Dashboard() {
       const emailSubject = `[URGENT DEAL REGRESSION] ${regressingContact.name} (${regressingContact.company || 'Retail'}) [Ref: ${regressingContact.accountNumber}]`;
       const emailBody = 
         `ATTENTION: DEAL REGRESSION NOTIFICATION\n\n` +
-        `This is an automated operational alert. The following customer deal has been moved backwards in the pipeline.\n\n` +
+        `Customer deal moved backwards in pipeline.\n\n` +
         `CUSTOMER RECORD:\n` +
         `• Account Reference: ${regressingContact.accountNumber}\n` +
         `• Customer Name: ${regressingContact.name}\n` +
-        `• Company: ${regressingContact.company || 'Private'}${regressingContact.crn ? ` (CRN: ${regressingContact.crn})` : ''}\n` +
         `• Previous Stage: ${regressingContact.stage}\n` +
         `• Reverted Stage: ${previousStage}\n` +
-        `• Assigned Manager: ${assignedRep}\n` +
-        `• Regression Initiated By: ${senderName}\n\n` +
-        `REASON CATEGORY:\n` +
-        `${regressionReasonCategory}\n\n` +
-        `DETAILED EXPLANATION:\n` +
-        `${regressionNotes}\n\n` +
-        `The master ledger on Google Drive and local audit logs have recorded this regression.\n` +
-        `Please review the account notes and re-engage if necessary.`;
+        `• Reverted By: ${senderName}\n\n` +
+        `REASON:\n${regressionReasonCategory}\n\n` +
+        `DETAILS:\n${regressionNotes}`;
 
       setPostRegressionDraft({
         subject: emailSubject,
@@ -592,182 +589,14 @@ export default function Dashboard() {
     setPostRegressionDraft(null);
   };
 
-  const handleCreateTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const activeToken = await authenticateToken();
-      const eventId = await syncTaskToGoogleCalendar(activeToken, {
-        ...newTask,
-        synced: true,
-        updatedAt: new Date().toISOString(),
-      });
-
-      await db.projects.add({
-        ...newTask,
-        calendarEventId: eventId,
-        synced: true,
-        updatedAt: new Date().toISOString(),
-      });
-
-      logAuditEvent(activeToken, folderId, {
-        timestamp: new Date().toISOString(),
-        actor: senderName,
-        action: 'SCHEDULE_MILESTONE',
-        entityId: `Calendar_${eventId}`,
-        details: `Created project milestone "${newTask.title}" for ${newTask.companyName}`,
-      });
-
-      setIsTaskModalOpen(false);
-      setNewTask({
-        title: '',
-        companyName: 'Revolut',
-        startDate: '2026-11-05',
-        endDate: '2026-11-12',
-        progress: 25,
-      });
-      await loadData();
-    } catch (err) {
-      console.error(err);
-      alert('Failed to schedule calendar event.');
-    }
-  };
-
-  const handleSaveCustomTemplate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTemplateForm.title || !newTemplateForm.body) return;
-
-    await db.templates.add({
-      templateKey: `custom_${Date.now()}`,
-      category: newTemplateForm.category,
-      title: newTemplateForm.title,
-      subject: newTemplateForm.subject,
-      body: newTemplateForm.body,
-      updatedAt: new Date().toISOString(),
-    });
-
-    setNewTemplateForm({ title: '', category: 'Custom', subject: '', body: '' });
-    setIsNewTemplateModalOpen(false);
-    await loadData();
-  };
-
-  const searchCompaniesHouse = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
-    setIsSearching(true);
-    try {
-      const res = await fetch(`/api/companies-house?q=${encodeURIComponent(searchQuery)}`);
-      const data = await res.json();
-      setSearchResults(data.items || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const selectCompany = (item: any) => {
-    setNewContact({
-      ...newContact,
-      company: item.title,
-      crn: item.company_number,
-      billingAddress: item.address_snippet || '',
-    });
-    setSearchResults([]);
-  };
-
-  const handleCreateContact = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newContact.name || !newContact.email) return;
-
-    const assignedAcc = newContact.accountNumber || `ACC-${Math.floor(10000 + Math.random() * 90000)}`;
-
-    const newId = await db.contacts.add({
-      ...newContact,
-      accountNumber: assignedAcc,
-      synced: false,
-      updatedAt: new Date().toISOString(),
-    });
-
-    await db.outbox.add({
-      type: 'INSERT',
-      table: 'contacts',
-      payload: { ...newContact, accountNumber: assignedAcc },
-      timestamp: Date.now(),
-    });
-
-    authenticateToken().then(t => {
-      logAuditEvent(t, folderId, {
-        timestamp: new Date().toISOString(),
-        actor: senderName,
-        action: 'CREATE_CONTACT',
-        entityId: `Contact_${newId}`,
-        details: `Intake customer ${newContact.name} [Account No: ${assignedAcc}] into "${newContact.stage}"`,
-      }).then(() => {
-        const cachedAudit = localStorage.getItem('biscuit_crm_audit_sheet_id');
-        if (cachedAudit) setAuditSheetId(cachedAudit);
-      });
-    }).catch(console.warn);
-
-    setIsModalOpen(false);
-    await loadData();
-    triggerDebouncedSync();
-  };
-
-  const handleCopyTemplate = (tpl: { id: string; body: string }) => {
-    const populated = replaceTokens(tpl.body, {
-      account_number: selectedContactForTemplate?.accountNumber,
-      contact_name: selectedContactForTemplate?.name,
-      company: selectedContactForTemplate?.company,
-      crn: selectedContactForTemplate?.crn,
-      stage: selectedContactForTemplate?.stage,
-      sender_name: senderName,
-    });
-    navigator.clipboard.writeText(populated);
-    setCopiedId(tpl.id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const handleOpenInGmail = (tpl: { subject?: string; body: string }) => {
-    const recipient = selectedContactForTemplate?.email || '';
-    const subject = encodeURIComponent(replaceTokens(tpl.subject || '', {
-      account_number: selectedContactForTemplate?.accountNumber,
-      contact_name: selectedContactForTemplate?.name,
-      company: selectedContactForTemplate?.company,
-      crn: selectedContactForTemplate?.crn,
-      sender_name: senderName,
-    }));
-    const body = encodeURIComponent(replaceTokens(tpl.body, {
-      account_number: selectedContactForTemplate?.accountNumber,
-      contact_name: selectedContactForTemplate?.name,
-      company: selectedContactForTemplate?.company,
-      crn: selectedContactForTemplate?.crn,
-      stage: selectedContactForTemplate?.stage,
-      sender_name: senderName,
-    }));
-
-    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${recipient}&su=${subject}&body=${body}`, '_blank');
-  };
-
-  const allTemplates = [
-    ...DEFAULT_TEMPLATES,
-    ...customTemplates.map(t => ({
-      id: `stored_${t.id}`,
-      category: t.category,
-      title: t.title,
-      subject: t.subject,
-      body: t.body,
-      isCustom: true,
-    })),
-  ];
-
-  const hasUnsynced = contacts.some(c => !c.synced);
-  const CurrentDeptIcon = DEPARTMENT_CONFIG[department].icon;
   const isMD = department === 'MD';
+  const isIT = department === 'IT';
   const allowedTabs = DEPARTMENT_CONFIG[department].allowedTabs;
+  const CurrentDeptIcon = DEPARTMENT_CONFIG[department].icon;
 
   return (
     <main className="max-w-[1540px] mx-auto px-6 py-8">
-      {/* Top Header & RBAC Identity Bar */}
+      {/* Top Header */}
       <header className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-slate-800 pb-5 mb-6 gap-4">
         <div>
           <div className="flex items-center gap-3">
@@ -787,7 +616,7 @@ export default function Dashboard() {
           <p className="text-xs text-slate-400 mt-0.5">Role-Tailored Zero-Storage Operating System</p>
         </div>
 
-        {/* Managing Director Full Persona Switcher (Locked & Hidden from regular personnel) */}
+        {/* MD Persona Switcher */}
         {isMD ? (
           <div className="flex flex-wrap items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-amber-500/30">
             <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider px-2">MD Superuser:</span>
@@ -822,20 +651,17 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Global Shortcuts */}
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsCommandOpen(true)}
             className="flex items-center gap-2 bg-slate-900 border border-slate-800 hover:border-slate-700 px-3 py-1.5 rounded-lg text-xs text-slate-400 transition"
           >
             <Search className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Search & Actions</span>
             <kbd className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">⌘K</kbd>
           </button>
-
           <button
             onClick={() => setIsHealthOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             System Live
@@ -843,7 +669,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Role-Gated Navigation Tab Bar */}
+      {/* Navigation Tab Bar */}
       <div className="flex bg-slate-900/90 border border-slate-800 rounded-xl p-1 gap-1 mb-6 shadow-sm overflow-x-auto">
         {(isMD || allowedTabs.includes('kanban')) && (
           <button
@@ -860,7 +686,6 @@ export default function Dashboard() {
             className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'finance' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
           >
             <PoundSterling className="w-3.5 h-3.5 text-emerald-400" /> Finance & Billing Desk
-            {department === 'Finance' && <span className="text-[10px] bg-slate-950 text-emerald-300 px-1.5 py-0.5 rounded ml-1">Finance</span>}
           </button>
         )}
 
@@ -899,80 +724,28 @@ export default function Dashboard() {
             <Users className="w-3.5 h-3.5" /> Employee Hub & Leave
           </button>
         )}
+
+        {(isMD || isIT) && (
+          <button
+            onClick={() => setViewMode('roster')}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'roster' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <Crown className="w-3.5 h-3.5 text-sky-400" /> Org Roster & Offboarding
+          </button>
+        )}
       </div>
 
-      {/* Role-Specific Action Banner */}
-      <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-3">
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg border ${DEPARTMENT_CONFIG[department].color}`}>
-            <CurrentDeptIcon className="w-4 h-4" />
-          </div>
-          <div>
-            <h3 className="text-xs font-semibold text-slate-200">
-              {department === 'MD' && 'Executive Master Console — Full unconstrained visibility across all 7 operational departments'}
-              {department === 'Finance' && 'Finance & Invoicing Center — Client remittance schedules, VAT records & contract valuations'}
-              {department === 'Sales' && 'Commercial Funnel Active — Inbound leads, prospect outreach & deal velocity'}
-              {department === 'Operations' && 'Operations Desk — Active SLA fulfillment, supplier delivery windows & calendar sync'}
-              {department === 'HR' && 'People & HR Center — Employee XP progression, deal delegations & 28-day statutory leave tracking'}
-              {department === 'Marketing' && 'Marketing Hub — Outbound battlecard templates, cold email hooks & messaging playbooks'}
-              {department === 'IT' && 'IT Systems & Architecture — Google Drive persistence, Dexie sync mutations & audit logs'}
-            </h3>
-            <p className="text-[11px] text-slate-400">
-              Active User: <span className="text-slate-200 font-semibold">{senderName}</span> &bull; Storage: <span className="text-emerald-400 font-mono">100% Client-Side Local First</span>
-            </p>
-          </div>
-        </div>
+      {/* Screen: Org Roster Desk (Restricted to IT & MD) */}
+      {viewMode === 'roster' && (isMD || isIT) && (
+        <OrgRosterDesk
+          currentRepName={senderName}
+          userRole={department}
+          contacts={contacts}
+          onDataChanged={loadData}
+        />
+      )}
 
-        {/* Tailored Quick Actions */}
-        <div className="flex items-center gap-2">
-          {(department === 'Sales' || department === 'MD') && (
-            <button
-              onClick={() => handleOpenAddModal('Prospect')}
-              className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-3 py-1.5 rounded-lg text-xs transition"
-            >
-              <Plus className="w-3.5 h-3.5" /> New Prospect Account
-            </button>
-          )}
-
-          {department === 'Finance' && (
-            <button
-              onClick={() => exportPipelineToCSV(contacts)}
-              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" /> Export Billing Register
-            </button>
-          )}
-
-          {(department === 'Operations' || department === 'MD') && (
-            <button
-              onClick={() => setIsTaskModalOpen(true)}
-              className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition"
-            >
-              <Plus className="w-3.5 h-3.5" /> Schedule Delivery Milestone
-            </button>
-          )}
-
-          {(department === 'IT' || department === 'MD') && (
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleSyncToSheets(false)}
-                disabled={isSyncing}
-                className="inline-flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} /> Flush Outbox to Drive
-              </button>
-              <button
-                onClick={() => exportAuditLogsToCSV(auditLogs)}
-                className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold px-3 py-1.5 rounded-lg text-xs border border-slate-700 transition"
-              >
-                <Download className="w-3.5 h-3.5 text-indigo-400" /> Export Audit Trail
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Screen 1: Finance Desk */}
+      {/* Screen: Finance Desk */}
       {viewMode === 'finance' && (isMD || allowedTabs.includes('finance')) && (
         <FinanceDesk
           contacts={contacts}
@@ -984,7 +757,7 @@ export default function Dashboard() {
         />
       )}
 
-      {/* Screen 2: Employee Hub */}
+      {/* Screen: Employee Hub */}
       {viewMode === 'hub' && (isMD || allowedTabs.includes('hub')) && (
         <EmployeeHub
           currentRepName={senderName}
@@ -995,7 +768,7 @@ export default function Dashboard() {
         />
       )}
 
-      {/* Screen 3: 7-Stage Extended Kanban Board */}
+      {/* Screen: Pipeline Board */}
       {viewMode === 'kanban' && (isMD || allowedTabs.includes('kanban')) && (
         <section className="grid grid-cols-1 md:grid-cols-7 gap-3 mb-8">
           {PIPELINE_STAGES.map((col, idx) => {
@@ -1046,16 +819,8 @@ export default function Dashboard() {
                           )}
                         </div>
 
-                        {/* SLA Inactivity Status Badge */}
                         <div className="pt-0.5">
                           <span className={`inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded border ${sla.badgeClass}`}>
-                            {sla.level === 'breach' ? (
-                              <AlertCircle className="w-2.5 h-2.5 text-rose-400" />
-                            ) : sla.level === 'warning' ? (
-                              <AlertTriangle className="w-2.5 h-2.5 text-amber-400" />
-                            ) : (
-                              <Timer className="w-2.5 h-2.5 text-slate-400" />
-                            )}
                             {sla.badgeLabel}
                           </span>
                         </div>
@@ -1064,16 +829,10 @@ export default function Dashboard() {
                           <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.5 rounded font-semibold">
                             {c.accountNumber}
                           </span>
-                          {c.crn && (
-                            <span className="text-[9px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-1 py-0.5 rounded">
-                              CRN:{c.crn}
-                            </span>
-                          )}
                         </div>
 
                         <div className="text-[10px] text-slate-400 truncate">{c.email}</div>
 
-                        {/* Directional Controls */}
                         <div className="flex items-center gap-1 pt-1 border-t border-slate-800/60">
                           {!isFirstCol && (
                             <button
@@ -1104,12 +863,6 @@ export default function Dashboard() {
                       </div>
                     );
                   })}
-
-                  {colContacts.length === 0 && (
-                    <div className="h-24 border border-dashed border-slate-800/80 rounded-lg flex items-center justify-center text-[10px] text-slate-600">
-                      Empty
-                    </div>
-                  )}
                 </div>
               </div>
             );
@@ -1117,406 +870,92 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Screen 4: Table View */}
+      {/* Screen: Table View */}
       {viewMode === 'table' && (isMD || allowedTabs.includes('table')) && (
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-            <div>
-              <h2 className="font-semibold text-slate-200 text-sm">All Customer Accounts</h2>
-              <p className="text-xs text-slate-400 mt-0.5">Primary pipeline dataset across all 7 lifecycle stages</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => exportPipelineToCSV(contacts)}
-                disabled={contacts.length === 0}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition shadow-md shadow-emerald-600/20"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                Export Pipeline CSV
-              </button>
-              <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full">{contacts.length} Records</span>
-            </div>
+            <h2 className="font-semibold text-slate-200 text-sm">All Customer Accounts</h2>
+            <button
+              onClick={() => exportPipelineToCSV(contacts)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              Export Pipeline CSV
+            </button>
           </div>
           <table className="w-full text-left text-sm text-slate-300">
             <thead className="bg-slate-900/80 text-xs uppercase text-slate-400 border-b border-slate-800">
               <tr>
                 <th className="px-6 py-3">Account No</th>
                 <th className="px-6 py-3">Customer</th>
-                <th className="px-6 py-3">Company & CRN</th>
+                <th className="px-6 py-3">Company</th>
                 <th className="px-6 py-3">Account Manager</th>
                 <th className="px-6 py-3">Stage</th>
                 <th className="px-6 py-3">SLA Status</th>
-                <th className="px-6 py-3">Sync Status</th>
-                <th className="px-6 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
-              {contacts.map((c) => {
-                const isFirstCol = c.stage === 'Prospect';
-                const sla = calculateSLAStatus(c);
-
-                return (
-                  <tr 
-                    key={c.id} 
-                    onClick={() => setSelectedDealForDrawer(c)}
-                    className="hover:bg-slate-800/30 cursor-pointer"
-                  >
-                    <td className="px-6 py-4 font-mono text-emerald-400 font-semibold text-xs">
-                      {c.accountNumber}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="font-semibold text-slate-100 hover:text-amber-400">{c.name}</div>
-                      <div className="text-xs text-slate-400">{c.email}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div>{c.company || '—'}</div>
-                      {c.crn && <span className="text-xs font-mono text-slate-400">CRN: {c.crn}</span>}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-xs text-slate-300">{c.accountManager || 'Unassigned'}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="px-2.5 py-1 text-xs rounded-full bg-slate-800 text-amber-300 border border-slate-700">
-                        {c.stage}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded border ${sla.badgeClass}`}>
-                        {sla.badgeLabel}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {c.synced ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Synced
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 text-xs text-amber-400 font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
-                          Outbox Queued
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right space-x-2">
-                      {!isFirstCol && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            initiateStageRegression(c);
-                          }}
-                          className="inline-flex items-center gap-1 text-xs text-rose-400 hover:text-rose-300"
-                        >
-                          <ChevronLeft className="w-3 h-3" /> Revert
-                        </button>
-                      )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          advanceStage(c);
-                        }}
-                        className="inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300"
-                      >
-                        Advance <ArrowRight className="w-3 h-3" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+              {contacts.map((c) => (
+                <tr key={c.id} onClick={() => setSelectedDealForDrawer(c)} className="hover:bg-slate-800/30 cursor-pointer">
+                  <td className="px-6 py-4 font-mono text-emerald-400 font-semibold text-xs">{c.accountNumber}</td>
+                  <td className="px-6 py-4 font-semibold text-slate-100">{c.name}</td>
+                  <td className="px-6 py-4">{c.company || '—'}</td>
+                  <td className="px-6 py-4 text-xs text-slate-300">{c.accountManager || 'Unassigned'}</td>
+                  <td className="px-6 py-4 text-xs">{c.stage}</td>
+                  <td className="px-6 py-4 font-mono text-xs text-slate-400">{calculateSLAStatus(c).badgeLabel}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </section>
       )}
 
-      {/* Screen 5: Gantt View */}
+      {/* Screen: Gantt View */}
       {viewMode === 'gantt' && (isMD || allowedTabs.includes('gantt')) && (
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-6 mb-8">
           <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-6">
-            <div>
-              <h2 className="font-semibold text-slate-100 text-base flex items-center gap-2">
-                <Clock className="w-5 h-5 text-indigo-400" /> Project Milestones & Interactive Gantt
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">Tasks auto-sync as all-day events on your connected Google Calendar</p>
-            </div>
-            <span className="text-xs font-mono bg-slate-800 text-slate-300 px-3 py-1 rounded-full">{tasks.length} Active Tasks</span>
+            <h2 className="font-semibold text-slate-100 text-base">Project Milestones & Interactive Gantt</h2>
+            <button
+              onClick={() => setIsTaskModalOpen(true)}
+              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-xs transition"
+            >
+              + New Milestone
+            </button>
           </div>
-
-          {tasks.length === 0 ? (
-            <div className="py-14 text-center text-slate-500 text-sm">
-              No milestones scheduled yet. Advance a deal or schedule delivery phases.
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {tasks.map((task) => (
-                <div key={task.id} className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <h4 className="font-semibold text-slate-200 text-sm">{task.title}</h4>
-                      <p className="text-xs text-slate-400">{task.companyName} &bull; {task.startDate} to {task.endDate}</p>
-                    </div>
-                    <span className="inline-flex items-center gap-1 text-xs text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                      <CalendarIcon className="w-3 h-3" /> Synced to Calendar
-                    </span>
-                  </div>
-
-                  <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden mt-3">
-                    <div 
-                      className="bg-gradient-to-r from-indigo-500 to-amber-500 h-full rounded-full transition-all duration-500" 
-                      style={{ width: `${task.progress}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between items-center text-[10px] text-slate-500 mt-1 font-mono">
-                    <span>{task.startDate}</span>
-                    <span>Progress: {task.progress}%</span>
-                    <span>{task.endDate}</span>
-                  </div>
+          <div className="space-y-4">
+            {tasks.map((task) => (
+              <div key={task.id} className="p-4 rounded-xl bg-slate-900/80 border border-slate-800">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-semibold text-slate-200 text-sm">{task.title}</h4>
+                  <span className="text-xs text-emerald-400 font-mono">Progress: {task.progress}%</span>
                 </div>
-              ))}
-            </div>
-          )}
+                <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                  <div className="bg-amber-500 h-full rounded-full" style={{ width: `${task.progress}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
-      {/* Screen 6: Template Vault */}
+      {/* Screen: Template Vault */}
       {viewMode === 'templates' && (isMD || allowedTabs.includes('templates')) && (
-        <section className="space-y-6 mb-8">
-          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h2 className="font-bold text-slate-100 text-base flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-amber-400" /> Standardized Template & Battlecard Vault
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Automatically substitute pipeline tokens with live customer account numbers
-              </p>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5">
-                <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
-                <span className="text-xs text-slate-400">Sender:</span>
-                <input
-                  type="text"
-                  value={senderName}
-                  onChange={(e) => handleUpdateSenderName(e.target.value)}
-                  className="bg-transparent text-xs text-slate-100 focus:outline-none w-32 border-b border-dashed border-slate-700 focus:border-amber-400"
-                  placeholder="Your Name"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">Inject Customer:</span>
-                <select
-                  value={selectedContactForTemplate?.id || ''}
-                  onChange={(e) => {
-                    const target = contacts.find(c => c.id === Number(e.target.value));
-                    if (target) setSelectedContactForTemplate(target);
-                  }}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
-                >
-                  {contacts.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      [{c.accountNumber}] {c.name} {c.company ? `(${c.company})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {allTemplates.map((tpl) => {
-              const populatedBody = replaceTokens(tpl.body, {
-                account_number: selectedContactForTemplate?.accountNumber,
-                contact_name: selectedContactForTemplate?.name,
-                company: selectedContactForTemplate?.company,
-                crn: selectedContactForTemplate?.crn,
-                stage: selectedContactForTemplate?.stage,
-                sender_name: senderName,
-              });
-
-              return (
-                <div key={tpl.id} className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 flex flex-col justify-between shadow-sm">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className={`text-[10px] uppercase font-semibold tracking-wider px-2 py-0.5 rounded border ${
-                        tpl.isCustom 
-                          ? 'border-indigo-500/30 text-indigo-400 bg-indigo-500/10' 
-                          : 'border-amber-500/20 text-amber-400 bg-amber-500/10'
-                      }`}>
-                        {tpl.category}
-                      </span>
-                      {tpl.isCustom && <span className="text-[10px] text-slate-500 font-mono">Custom</span>}
-                    </div>
-                    <h3 className="font-semibold text-slate-100 text-sm mb-3">{tpl.title}</h3>
-
-                    <div className="p-3 rounded-lg bg-slate-950/80 border border-slate-800/80 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto mb-4">
-                      {populatedBody}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-2 border-t border-slate-800/60">
-                    <button
-                      onClick={() => handleCopyTemplate(tpl)}
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition"
-                    >
-                      {copiedId === tpl.id ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-400" /> Copied!
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" /> Copy Script
-                        </>
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() => handleOpenInGmail(tpl)}
-                      className="inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition"
-                      title="Open draft in Gmail"
-                    >
-                      <Mail className="w-3.5 h-3.5" /> Gmail Draft
-                    </button>
-                  </div>
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          {allTemplates.map((tpl) => (
+            <div key={tpl.id} className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] uppercase font-semibold text-amber-400">{tpl.category}</span>
+                <h3 className="font-semibold text-slate-100 text-sm mb-3 mt-1">{tpl.title}</h3>
+                <div className="p-3 rounded-lg bg-slate-950/80 border border-slate-800 text-xs font-mono text-slate-300 max-h-48 overflow-y-auto whitespace-pre-wrap">
+                  {tpl.body}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            </div>
+          ))}
         </section>
       )}
 
-      {/* Mandatory Deal Regression Modal */}
-      {regressingContact && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-100 text-base">Revert Deal Pipeline Stage</h3>
-                  <p className="text-xs text-slate-400">
-                    Account: <span className="text-emerald-400 font-mono font-semibold">{regressingContact.accountNumber}</span> &bull; {regressingContact.name} ({regressingContact.company || 'Retail'})
-                  </p>
-                </div>
-              </div>
-              <button 
-                onClick={() => {
-                  setRegressingContact(null);
-                  setPostRegressionDraft(null);
-                }} 
-                className="text-slate-400 hover:text-slate-200"
-              >✕</button>
-            </div>
-
-            {!postRegressionDraft ? (
-              <form onSubmit={handleConfirmRegression} className="space-y-4">
-                <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-300 leading-relaxed">
-                  You are moving this deal backward from <strong>{regressingContact.stage}</strong>. Company policy requires an explanation and will prepare an escalation notification to the account manager and supervisor.
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1">
-                    Primary Reason for Delay / Cold Interest
-                  </label>
-                  <select
-                    value={regressionReasonCategory}
-                    onChange={(e) => setRegressionReasonCategory(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-rose-400"
-                  >
-                    <option value="Client Requested Timeline Postponement">Client Requested Timeline Postponement</option>
-                    <option value="Budget Freeze / Internal Re-allocation">Budget Freeze / Internal Re-allocation</option>
-                    <option value="Procurement / Legal Contract Issues">Procurement / Legal Contract Issues</option>
-                    <option value="Key Champion Left the Company">Key Champion Left the Company</option>
-                    <option value="Cold Communication / Unresponsive">Cold Communication / Unresponsive</option>
-                    <option value="Competitive Threat / Evaluation Reopened">Competitive Threat / Evaluation Reopened</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1">
-                    Mandatory Notes & Nuances for Management
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={regressionNotes}
-                    onChange={(e) => setRegressionNotes(e.target.value)}
-                    placeholder="Describe specific details: e.g. Client CFO requested to defer signature to Q1 due to fiscal year close..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-rose-400"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-400 block mb-1">
-                    Supervisor / Escalation Notification Email
-                  </label>
-                  <input
-                    type="email"
-                    value={supervisorEmail}
-                    onChange={(e) => {
-                      setSupervisorEmail(e.target.value);
-                      localStorage.setItem('biscuit_crm_supervisor_email', e.target.value);
-                    }}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300 font-mono"
-                    required
-                  />
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => setRegressingContact(null)}
-                    className="px-4 py-2 text-xs text-slate-400 hover:text-slate-200"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isRegressing}
-                    className="inline-flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold px-4 py-2 rounded-lg text-xs transition"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                    {isRegressing ? 'Recording Regression...' : 'Confirm Stage Rollback'}
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <div className="space-y-4">
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-300">
-                  Stage rollback recorded in Dexie and queued for Google Drive master ledger.
-                </div>
-
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs font-mono text-slate-300 max-h-48 overflow-y-auto whitespace-pre-wrap">
-                  {postRegressionDraft.body}
-                </div>
-
-                <div className="flex gap-2 pt-2 border-t border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRegressingContact(null);
-                      setPostRegressionDraft(null);
-                    }}
-                    className="flex-1 py-2 text-xs text-slate-400 hover:text-slate-200 border border-slate-800 rounded-lg"
-                  >
-                    Dismiss
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDispatchRegressionAlert}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 px-4 rounded-lg text-xs transition shadow-md shadow-indigo-600/20"
-                  >
-                    <Mail className="w-3.5 h-3.5" /> Dispatch Alert in Gmail
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Slide-Over Deal Detail & History Drawer */}
+      {/* Deal Detail Drawer */}
       <DealDetailDrawer
         contact={selectedDealForDrawer}
         isOpen={Boolean(selectedDealForDrawer)}
@@ -1528,7 +967,7 @@ export default function Dashboard() {
         }}
       />
 
-      {/* Command Palette */}
+      {/* Command Palette & Health Wizard */}
       <CommandPalette
         isOpen={isCommandOpen}
         onClose={() => setIsCommandOpen(false)}
@@ -1539,163 +978,11 @@ export default function Dashboard() {
         onOpenNewTemplate={() => setIsNewTemplateModalOpen(true)}
       />
 
-      {/* Health Diagnostic Wizard */}
       <HealthWizard
         isOpen={isHealthOpen}
         onClose={() => setIsHealthOpen(false)}
         folderId={folderId}
       />
-
-      {/* Modal: Add Customer Account */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
-              <div>
-                <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
-                  <UserCheck className="w-5 h-5 text-amber-400" /> Add Customer Account
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Assigned Account Reference: <span className="font-mono text-emerald-400 font-semibold">{newContact.accountNumber}</span>
-                </p>
-              </div>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-200">✕</button>
-            </div>
-
-            <div className="mb-4 p-3.5 bg-slate-950/60 rounded-xl border border-slate-800/80">
-              <label className="text-xs font-semibold text-slate-300 block mb-1">
-                Optional: UK Companies House Autofill (If Business Customer)
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Search registered UK company name..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 flex-1 focus:outline-none focus:border-sky-500"
-                />
-                <button
-                  type="button"
-                  onClick={searchCompaniesHouse}
-                  disabled={isSearching}
-                  className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5"
-                >
-                  {isSearching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                  Autofill
-                </button>
-              </div>
-
-              {searchResults.length > 0 && (
-                <div className="mt-2 max-h-36 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950 p-2 space-y-1">
-                  {searchResults.map((item, idx) => (
-                    <div
-                      key={idx}
-                      onClick={() => selectCompany(item)}
-                      className="p-2 rounded hover:bg-slate-800 cursor-pointer text-xs flex justify-between items-center transition"
-                    >
-                      <div>
-                        <div className="font-semibold text-slate-200">{item.title}</div>
-                        <div className="text-slate-400 text-[10px]">{item.address_snippet}</div>
-                      </div>
-                      <span className="font-mono text-sky-400 shrink-0 ml-2">#{item.company_number}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <form onSubmit={handleCreateContact} className="space-y-3.5">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Initial Pipeline Stage</label>
-                  <select
-                    value={newContact.stage}
-                    onChange={(e) => setNewContact({ ...newContact, stage: e.target.value as any })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
-                  >
-                    {PIPELINE_STAGES.map(s => (
-                      <option key={s.key} value={s.key}>{s.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Account Number</label>
-                  <input
-                    type="text"
-                    value={newContact.accountNumber}
-                    onChange={(e) => setNewContact({ ...newContact, accountNumber: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-emerald-400 font-semibold"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Customer / Contact Name</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. David Clarke"
-                    value={newContact.name}
-                    onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Company (Optional)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Client Account Ltd"
-                    value={newContact.company}
-                    onChange={(e) => setNewContact({ ...newContact, company: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Email Address</label>
-                  <input
-                    type="email"
-                    value={newContact.email}
-                    onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Phone Number</label>
-                  <input
-                    type="text"
-                    placeholder="+44 20 7946 0912"
-                    value={newContact.phone}
-                    onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-slate-100"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm transition"
-                >
-                  Save Customer Account
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </main>
   );
 }

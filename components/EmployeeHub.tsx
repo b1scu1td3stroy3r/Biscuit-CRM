@@ -5,9 +5,9 @@ import {
   Trophy, Award, Flame, UserCheck, Calendar, ArrowRightLeft, 
   StickyNote, Plus, Trash2, CheckCircle2, Clock, ShieldCheck, 
   Sparkles, Check, AlertCircle, Send, CalendarCheck2, Mail, ExternalLink,
-  XCircle
+  XCircle, Crown
 } from 'lucide-react';
-import { db, Contact, WhiteboardNote, LeaveRequest, EmployeeProfile, DepartmentRole } from '../packages/storage/src/db';
+import { db, Contact, WhiteboardNote, LeaveRequest, EmployeeProfile, DepartmentRole, StaffHierarchyTier } from '../packages/storage/src/db';
 import { syncLeaveToGoogleCalendar, deleteCalendarEvent } from '../packages/storage/src/calendarSync';
 
 interface EmployeeHubProps {
@@ -26,18 +26,70 @@ const NOTE_COLORS = {
   rose: 'bg-rose-950/40 border-rose-500/30 text-rose-200',
 };
 
+export function computeProgression(tier: StaffHierarchyTier, xp: number) {
+  const isLeaderOrAbove = tier !== 'Staff';
+
+  if (isLeaderOrAbove) {
+    const level = Math.min(5, Math.max(1, Math.floor(xp / 250) + 1));
+    const titles = [
+      'Frontline Lead',
+      'Operations Captain',
+      'Department Head',
+      'Executive Champion',
+      'Grandmaster Director'
+    ];
+    return {
+      level,
+      maxLevels: 5,
+      step: 250,
+      title: titles[level - 1],
+      isLeadership: true,
+      nextXP: level >= 5 ? 1250 : level * 250,
+      baseXP: (level - 1) * 250,
+      badge: 'border-purple-500/30 text-purple-300 bg-purple-500/10'
+    };
+  }
+
+  // 10-level staff progression
+  const level = Math.min(10, Math.max(1, Math.floor(xp / 200) + 1));
+  const staffTitles = [
+    'Apprentice Associate',
+    'Junior Specialist',
+    'Core Practitioner',
+    'Advanced Operator',
+    'Senior Specialist',
+    'Staff Anchor',
+    'Master Practitioner',
+    'Department Vanguard',
+    'Principal Specialist',
+    'Apex Elite'
+  ];
+  return {
+    level,
+    maxLevels: 10,
+    step: 200,
+    title: staffTitles[level - 1],
+    isLeadership: false,
+    nextXP: level >= 10 ? 2000 : level * 200,
+    baseXP: (level - 1) * 200,
+    badge: 'border-amber-500/30 text-amber-300 bg-amber-500/10'
+  };
+}
+
 export default function EmployeeHub({
   currentRepName,
   contacts,
   onRepNameChange,
   onAuthenticateGoogle,
 }: EmployeeHubProps) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'handover' | 'whiteboard' | 'leave'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'handover' | 'whiteboard' | 'leave' | 'approvals'>('profile');
   
   const [profile, setProfile] = useState<EmployeeProfile>({
     name: currentRepName || 'Sarah Jenkins',
-    role: 'Senior Account Executive',
+    role: 'Sales Lead',
     department: 'Sales',
+    tier: 'Team Leader',
+    status: 'Active',
     xp: 685,
     level: 3,
     dealsClosed: 4,
@@ -81,9 +133,11 @@ export default function EmployeeHub({
       } else {
         const initial: EmployeeProfile = {
           name: currentRepName,
-          role: 'Senior Account Executive',
+          role: 'Sales Specialist',
           department: 'Sales',
-          xp: 685,
+          tier: 'Staff',
+          status: 'Active',
+          xp: 450,
           level: 3,
           dealsClosed: contacts.filter(c => c.stage === 'Customer Service').length,
           handoverActive: false,
@@ -102,11 +156,11 @@ export default function EmployeeHub({
 
   const addXP = async (amount: number, reason: string) => {
     const updatedXP = profile.xp + amount;
-    const updatedLevel = Math.floor(updatedXP / 250) + 1;
-    const updatedProfile = { ...profile, xp: updatedXP, level: updatedLevel };
+    const prog = computeProgression(profile.tier, updatedXP);
+    const updatedProfile = { ...profile, xp: updatedXP, level: prog.level };
     setProfile(updatedProfile);
     if (profile.id) {
-      await db.employees.update(profile.id, { xp: updatedXP, level: updatedLevel });
+      await db.employees.update(profile.id, { xp: updatedXP, level: prog.level });
     }
   };
 
@@ -124,7 +178,7 @@ export default function EmployeeHub({
 
     setNewNoteTitle('');
     setNewNoteText('');
-    await addXP(20, 'Contributed to Team Whiteboard');
+    await addXP(20, 'Posted Whiteboard Sticky');
     await loadHubData();
   };
 
@@ -161,21 +215,32 @@ export default function EmployeeHub({
 
       await db.leaveRequests.add({
         employeeName: currentRepName,
+        department: profile.department,
         leaveType: newLeave.type,
         startDate: newLeave.startDate,
         endDate: newLeave.endDate,
         days: diffDays,
-        status: 'Approved',
+        status: profile.tier === 'Director' ? 'Approved' : 'Pending',
         notes: newLeave.notes,
         calendarEventId: calId,
         createdAt: new Date().toISOString(),
       });
 
-      await addXP(25, 'Scheduled PTO & Synced OOO Calendar Block');
+      await addXP(25, 'Scheduled Holiday Booking');
       await loadHubData();
     } finally {
       setIsSubmittingLeave(false);
     }
+  };
+
+  const handleApproveLeave = async (req: LeaveRequest, approved: boolean) => {
+    if (!req.id) return;
+    await db.leaveRequests.update(req.id, {
+      status: approved ? 'Approved' : 'Rejected',
+      approvedBy: currentRepName,
+    });
+    await addXP(20, 'Reviewed Department Leave');
+    await loadHubData();
   };
 
   const handleDeleteLeave = async (req: LeaveRequest) => {
@@ -258,20 +323,17 @@ export default function EmployeeHub({
     window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(handoverCoverEmail)}&su=${subject}&body=${body}`, '_blank');
   };
 
-  const getRank = (lvl: number) => {
-    if (lvl >= 5) return { title: 'Grandmaster Dealmaker', badge: 'border-purple-500/40 text-purple-400 bg-purple-500/10' };
-    if (lvl >= 3) return { title: 'Pipeline Closer', badge: 'border-amber-500/40 text-amber-400 bg-amber-500/10' };
-    return { title: 'Rookie Account Rep', badge: 'border-sky-500/40 text-sky-400 bg-sky-500/10' };
-  };
-
-  const rank = getRank(profile.level);
-  const nextLevelXP = profile.level * 250;
-  const currentLevelBaseXP = (profile.level - 1) * 250;
-  const progressPercent = Math.min(100, Math.max(0, ((profile.xp - currentLevelBaseXP) / (nextLevelXP - currentLevelBaseXP)) * 100));
+  const isLeader = profile.tier !== 'Staff';
+  const prog = computeProgression(profile.tier, profile.xp);
+  const progressPercent = Math.min(100, Math.max(0, ((profile.xp - prog.baseXP) / (prog.nextXP - prog.baseXP)) * 100));
 
   const totalLeaveTaken = leaveList
     .filter(l => l.employeeName.toLowerCase() === currentRepName.toLowerCase() && l.status === 'Approved')
     .reduce((acc, l) => acc + l.days, 0);
+
+  const pendingDepartmentLeaves = leaveList.filter(
+    l => l.status === 'Pending' && (profile.tier === 'Director' || l.department === profile.department)
+  );
 
   return (
     <section className="space-y-6 mb-8">
@@ -283,7 +345,7 @@ export default function EmployeeHub({
               {currentRepName.charAt(0)}
             </div>
             <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500 text-slate-950 shadow">
-              Lv.{profile.level}
+              Lv.{prog.level}/{prog.maxLevels}
             </span>
           </div>
 
@@ -298,8 +360,11 @@ export default function EmployeeHub({
                 }}
                 className="font-bold text-slate-100 text-lg bg-transparent border-b border-dashed border-slate-700 hover:border-amber-400 focus:outline-none focus:border-amber-400 transition"
               />
-              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${rank.badge}`}>
-                {rank.title}
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${prog.badge}`}>
+                {prog.title}
+              </span>
+              <span className="text-[10px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded">
+                {profile.tier} ({prog.isLeadership ? '5-Level Ladder' : '10-Level System'})
               </span>
             </div>
             <p className="text-xs text-slate-400 flex items-center gap-2 mt-1">
@@ -318,7 +383,7 @@ export default function EmployeeHub({
             <span className="font-semibold text-slate-300 flex items-center gap-1.5">
               <Flame className="w-4 h-4 text-amber-500 animate-pulse" /> Rep Experience (XP)
             </span>
-            <span className="font-mono text-amber-400 font-bold">{profile.xp} / {nextLevelXP} XP</span>
+            <span className="font-mono text-amber-400 font-bold">{profile.xp} / {prog.nextXP} XP</span>
           </div>
           <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
             <div 
@@ -327,8 +392,8 @@ export default function EmployeeHub({
             />
           </div>
           <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono">
-            <span>Level {profile.level}</span>
-            <span>{nextLevelXP - profile.xp} XP to Level {profile.level + 1}</span>
+            <span>Level {prog.level} of {prog.maxLevels}</span>
+            <span>{Math.max(0, prog.nextXP - profile.xp)} XP to Level {Math.min(prog.maxLevels, prog.level + 1)}</span>
           </div>
         </div>
       </div>
@@ -367,7 +432,73 @@ export default function EmployeeHub({
         >
           <Calendar className="w-4 h-4" /> Annual Leave Tracker
         </button>
+        {isLeader && (
+          <button
+            onClick={() => setActiveTab('approvals')}
+            className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition ${
+              activeTab === 'approvals' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Crown className="w-4 h-4 text-amber-400" /> Team Approvals ({pendingDepartmentLeaves.length})
+          </button>
+        )}
       </div>
+
+      {/* Tab: Leader Leave Approvals */}
+      {activeTab === 'approvals' && isLeader && (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div>
+              <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
+                <Crown className="w-4 h-4 text-amber-400" /> Departmental Holiday Approval Desk
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Review and approve leave for personnel in {profile.department} (+20 XP for review actions)
+              </p>
+            </div>
+            <span className="text-xs font-mono text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
+              {pendingDepartmentLeaves.length} Pending
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {pendingDepartmentLeaves.map((req) => (
+              <div key={req.id} className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-200 text-xs">{req.employeeName}</span>
+                    <span className="text-[10px] font-mono text-slate-400">({req.days} days) &bull; {req.leaveType}</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                    {req.startDate} to {req.endDate} &bull; Notes: {req.notes || 'None'}
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleApproveLeave(req, true)}
+                    className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                  >
+                    <Check className="w-3.5 h-3.5" /> Approve (+20 XP)
+                  </button>
+                  <button
+                    onClick={() => handleApproveLeave(req, false)}
+                    className="inline-flex items-center gap-1 bg-rose-600 hover:bg-rose-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                  >
+                    <X className="w-3.5 h-3.5" /> Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {pendingDepartmentLeaves.length === 0 && (
+              <div className="py-10 text-center border border-dashed border-slate-800 rounded-xl text-xs text-slate-500">
+                All department holiday requests have been processed.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Tab: Annual Leave */}
       {activeTab === 'leave' && (
@@ -472,7 +603,11 @@ export default function EmployeeHub({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                    <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded border ${
+                      req.status === 'Approved' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' :
+                      req.status === 'Pending' ? 'text-amber-400 bg-amber-500/10 border-amber-500/20' :
+                      'text-rose-400 bg-rose-500/10 border-rose-500/20'
+                    }`}>
                       <CheckCircle2 className="w-3 h-3" /> {req.status}
                     </span>
 
@@ -487,12 +622,6 @@ export default function EmployeeHub({
                   </div>
                 </div>
               ))}
-
-              {leaveList.length === 0 && (
-                <div className="py-8 text-center border border-dashed border-slate-800 rounded-lg text-slate-500 text-xs">
-                  No annual leave requests recorded. Submit your first holiday booking above.
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -760,11 +889,11 @@ export default function EmployeeHub({
                 <span className="font-mono text-emerald-400 font-semibold">+35 XP</span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-slate-800/60">
-                <span>Submit Deal Handover</span>
+                <span>Re-allocated Workload Absorbed</span>
                 <span className="font-mono text-emerald-400 font-semibold">+25 XP</span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-slate-800/60">
-                <span>Post Whiteboard Sticky</span>
+                <span>Approve / Review Team Leave</span>
                 <span className="font-mono text-emerald-400 font-semibold">+20 XP</span>
               </div>
               <div className="flex justify-between py-1.5">
@@ -777,15 +906,15 @@ export default function EmployeeHub({
           <div className="p-5 rounded-xl border border-slate-800 bg-slate-900/40 space-y-3 flex flex-col justify-between">
             <div>
               <h3 className="font-semibold text-slate-200 text-sm flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-purple-400" /> Rep Standing
+                <ShieldCheck className="w-4 h-4 text-purple-400" /> Progression Standing
               </h3>
               <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                Rep levels determine priority deal allocation and automated routing quotas across your pipeline.
+                Staff advance through 10 operational levels (200 XP/level), while Leaders & Managers advance through 5 command tiers (250 XP/tier).
               </p>
             </div>
             <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/20 text-center">
-              <span className="text-xs text-purple-300 block font-semibold">Tier Status</span>
-              <span className="text-xl font-extrabold text-purple-400">{rank.title}</span>
+              <span className="text-xs text-purple-300 block font-semibold">{profile.tier} Title</span>
+              <span className="text-xl font-extrabold text-purple-400">{prog.title}</span>
             </div>
           </div>
         </div>
