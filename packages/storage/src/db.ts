@@ -1,6 +1,6 @@
 import Dexie, { Table } from 'dexie';
 
-export type DepartmentRole = 'Sales' | 'Operations' | 'HR' | 'Marketing' | 'IT';
+export type DepartmentRole = 'Sales' | 'Operations' | 'HR' | 'Marketing' | 'IT' | 'Finance' | 'MD';
 
 export interface Contact {
   id?: number;
@@ -11,6 +11,8 @@ export interface Contact {
   email: string;
   phone: string;
   stage: 'Prospect' | 'Lead' | 'Sales' | 'Procurement' | 'Logistics' | 'Customer Service' | 'Winback';
+  dealValue?: number;
+  invoiceStatus?: 'Pending' | 'Drafted' | 'Issued' | 'Paid';
   accountManager?: string;
   billingAddress?: string;
   shippingAddress?: string;
@@ -105,8 +107,8 @@ export class BiscuitDatabase extends Dexie {
 
   constructor() {
     super('BiscuitDatabase');
-    this.version(7).stores({
-      contacts: '++id, accountNumber, name, company, crn, stage, synced, updatedAt',
+    this.version(8).stores({
+      contacts: '++id, accountNumber, name, company, crn, stage, invoiceStatus, synced, updatedAt',
       projects: '++id, title, companyName, synced, updatedAt',
       templates: '++id, templateKey, category, updatedAt',
       whiteboardNotes: '++id, author, color, createdAt',
