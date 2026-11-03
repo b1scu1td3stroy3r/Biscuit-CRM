@@ -96,6 +96,7 @@ export interface NewsItem {
   department: DepartmentRole | 'Company-Wide';
   actor: string;
   badgeColor?: string;
+  reactions?: Record<string, number>;
   createdAt: string;
 }
 
@@ -129,7 +130,7 @@ export class BiscuitDatabase extends Dexie {
 
   constructor() {
     super('BiscuitDatabase');
-    this.version(11).stores({
+    this.version(12).stores({
       contacts: '++id, accountNumber, name, company, crn, stage, accountManager, invoiceStatus, mailchimpStatus, phone, synced, updatedAt',
       projects: '++id, title, companyName, assignee, department, synced, updatedAt',
       templates: '++id, templateKey, category, updatedAt',
