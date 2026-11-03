@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  X, Building2, User, Mail, Phone, MapPin, Hash, CheckCircle2, 
+  X, Building2, User, Mail, Phone, PhoneCall, MapPin, Hash, CheckCircle2, 
   Clock, ArrowRight, ShieldCheck, FileText, Calendar, Plus, RefreshCw, AlertCircle
 } from 'lucide-react';
 import { Contact, db } from '../packages/storage/src/db';
@@ -45,6 +45,12 @@ export default function DealDetailDrawer({
   }, [contact]);
 
   if (!isOpen || !contact) return null;
+
+  const handleDial = (phoneNumber: string) => {
+    const proto = localStorage.getItem('biscuit_crm_cti_protocol') || 'tel';
+    const cleanNumber = phoneNumber.replace(/[^0-9+]/g, '');
+    window.location.href = `${proto}:${cleanNumber}`;
+  };
 
   const handleSaveContact = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,9 +198,20 @@ export default function DealDetailDrawer({
                         </div>
                         <div>
                           <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">
-                            Phone
+                            Phone (Click to Dial)
                           </span>
-                          <p className="text-xs text-slate-200">{contact.phone || '—'}</p>
+                          {contact.phone ? (
+                            <button
+                              onClick={() => handleDial(contact.phone)}
+                              className="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 font-mono font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 px-2.5 py-1 rounded-lg transition"
+                              title="Click to dial via 4Com / Softphone / VoIP"
+                            >
+                              <PhoneCall className="w-3.5 h-3.5" />
+                              {contact.phone}
+                            </button>
+                          ) : (
+                            <p className="text-xs text-slate-400">—</p>
+                          )}
                         </div>
                       </div>
 
@@ -283,7 +300,7 @@ export default function DealDetailDrawer({
                           type="text"
                           value={formData.phone || ''}
                           onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100 font-mono"
                         />
                       </div>
 
