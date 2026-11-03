@@ -1,5 +1,7 @@
 import Dexie, { Table } from 'dexie';
 
+export type DepartmentRole = 'Sales' | 'Operations' | 'HR' | 'Marketing' | 'IT';
+
 export interface Contact {
   id?: number;
   accountNumber: string;
@@ -65,6 +67,7 @@ export interface EmployeeProfile {
   id?: number;
   name: string;
   role: string;
+  department: DepartmentRole;
   xp: number;
   level: number;
   dealsClosed: number;
@@ -102,13 +105,13 @@ export class BiscuitDatabase extends Dexie {
 
   constructor() {
     super('BiscuitDatabase');
-    this.version(6).stores({
+    this.version(7).stores({
       contacts: '++id, accountNumber, name, company, crn, stage, synced, updatedAt',
       projects: '++id, title, companyName, synced, updatedAt',
       templates: '++id, templateKey, category, updatedAt',
       whiteboardNotes: '++id, author, color, createdAt',
       leaveRequests: '++id, employeeName, status, startDate, endDate',
-      employees: '++id, name, xp, level',
+      employees: '++id, name, department, xp, level',
       outbox: '++id, type, table, timestamp',
       auditLogs: '++id, timestamp, actor, action, entityId',
     });
