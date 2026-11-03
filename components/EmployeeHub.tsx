@@ -7,7 +7,7 @@ import {
   Sparkles, Check, AlertCircle, Send, CalendarCheck2, Mail, ExternalLink,
   XCircle
 } from 'lucide-react';
-import { db, Contact, WhiteboardNote, LeaveRequest, EmployeeProfile } from '../packages/storage/src/db';
+import { db, Contact, WhiteboardNote, LeaveRequest, EmployeeProfile, DepartmentRole } from '../packages/storage/src/db';
 import { syncLeaveToGoogleCalendar, deleteCalendarEvent } from '../packages/storage/src/calendarSync';
 
 interface EmployeeHubProps {
@@ -37,7 +37,8 @@ export default function EmployeeHub({
   const [profile, setProfile] = useState<EmployeeProfile>({
     name: currentRepName || 'Sarah Jenkins',
     role: 'Senior Account Executive',
-    xp: 560,
+    department: 'Sales',
+    xp: 685,
     level: 3,
     dealsClosed: 4,
     handoverActive: false,
@@ -78,10 +79,11 @@ export default function EmployeeHub({
       if (existing) {
         setProfile(existing);
       } else {
-        const initial = {
+        const initial: EmployeeProfile = {
           name: currentRepName,
           role: 'Senior Account Executive',
-          xp: 560,
+          department: 'Sales',
+          xp: 685,
           level: 3,
           dealsClosed: contacts.filter(c => c.stage === 'Customer Service').length,
           handoverActive: false,
@@ -302,6 +304,8 @@ export default function EmployeeHub({
             </div>
             <p className="text-xs text-slate-400 flex items-center gap-2 mt-1">
               <span>{profile.role}</span>
+              <span>&bull;</span>
+              <span className="text-indigo-400 font-medium">{profile.department}</span>
               <span>&bull;</span>
               <span className="text-emerald-400 font-mono">{contacts.length} Accounts Monitored</span>
             </p>
