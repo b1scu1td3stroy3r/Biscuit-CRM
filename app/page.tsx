@@ -4,11 +4,16 @@ import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, Zap, Database, Building2, Calendar as CalendarIcon, 
   FileText, CheckCircle2, Loader2, FolderCheck, Plus, Search, 
-  RefreshCw, ExternalLink, ChevronRight, ArrowRight, LayoutGrid, List, Clock
+  RefreshCw, ExternalLink, ChevronRight, ArrowRight, LayoutGrid, List, Clock,
+  BookOpen, Copy, Mail, Check, UserCheck, Activity
 } from 'lucide-react';
-import { db, Contact, ProjectTask } from '../packages/storage/src/db';
+import { db, Contact, ProjectTask, StoredTemplate } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets } from '../packages/storage/src/sheetsSync';
 import { syncTaskToGoogleCalendar } from '../packages/storage/src/calendarSync';
+import { logAuditEvent } from '../packages/storage/src/auditLogger';
+import { DEFAULT_TEMPLATES, replaceTokens, TemplateItem } from '../packages/templates/src/templates';
+import CommandPalette from '../components/CommandPalette';
+import HealthWizard from '../components/HealthWizard';
 
 declare global {
   interface Window {
@@ -32,17 +37,31 @@ export default function Dashboard() {
   const [folderId] = useState<string>('1WK1GE6vGTuS1KGCC607Jdkcc6464YaST');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
+  const [customTemplates, setCustomTemplates] = useState<StoredTemplate[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncedSheetId, setLastSyncedSheetId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'kanban' | 'table' | 'gantt'>('kanban');
+  const [auditSheetId, setAuditSheetId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'kanban' | 'table' | 'gantt' | 'templates'>('kanban');
 
-  // Contact Modal
+  const [isCommandOpen, setIsCommandOpen] = useState(false);
+  const [isHealthOpen, setIsHealthOpen] = useState(false);
+  const [senderName, setSenderName] = useState<string>('Account Executive');
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // Project Task Modal
+  const [selectedContactForTemplate, setSelectedContactForTemplate] = useState<Contact | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isNewTemplateModalOpen, setIsNewTemplateModalOpen] = useState(false);
+  const [newTemplateForm, setNewTemplateForm] = useState({
+    title: '',
+    category: 'Custom' as const,
+    subject: '',
+    body: '',
+  });
+
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [newTask, setNewTask] = useState({
     title: '',
@@ -72,15 +91,41 @@ export default function Dashboard() {
   const loadData = async () => {
     const contactList = await db.contacts.toArray();
     const taskList = await db.projects.toArray();
+    const storedTpls = await db.templates.toArray();
     setContacts(contactList);
     setTasks(taskList);
+    setCustomTemplates(storedTpls);
+
+    const savedSender = localStorage.getItem('biscuit_crm_sender_name');
+    if (savedSender) setSenderName(savedSender);
+
+    if (contactList.length > 0 && !selectedContactForTemplate) {
+      setSelectedContactForTemplate(contactList[0]);
+    }
     const cachedSheet = localStorage.getItem('biscuit_crm_pipeline_sheet_id');
     if (cachedSheet) setLastSyncedSheetId(cachedSheet);
+
+    const cachedAudit = localStorage.getItem('biscuit_crm_audit_sheet_id');
+    if (cachedAudit) setAuditSheetId(cachedAudit);
   };
 
   useEffect(() => {
     loadData();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  const handleUpdateSenderName = (name: string) => {
+    setSenderName(name);
+    localStorage.setItem('biscuit_crm_sender_name', name);
+  };
 
   const authenticateToken = (): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -135,6 +180,20 @@ export default function Dashboard() {
       timestamp: Date.now(),
     });
 
+    // Fire non-blocking audit logging
+    authenticateToken().then(t => {
+      logAuditEvent(t, folderId, {
+        timestamp: now,
+        actor: senderName,
+        action: 'UPDATE_STAGE',
+        entityId: `Contact_${contact.id}`,
+        details: `Advanced stage from "${contact.stage}" to "${nextStage}" for ${contact.name} (${contact.company})`,
+      }).then(() => {
+        const cachedAudit = localStorage.getItem('biscuit_crm_audit_sheet_id');
+        if (cachedAudit) setAuditSheetId(cachedAudit);
+      });
+    }).catch(console.warn);
+
     await loadData();
   };
 
@@ -155,6 +214,14 @@ export default function Dashboard() {
         updatedAt: new Date().toISOString(),
       });
 
+      logAuditEvent(activeToken, folderId, {
+        timestamp: new Date().toISOString(),
+        actor: senderName,
+        action: 'SCHEDULE_MILESTONE',
+        entityId: `Calendar_${eventId}`,
+        details: `Created project milestone "${newTask.title}" for ${newTask.companyName} (${newTask.startDate} to ${newTask.endDate})`,
+      });
+
       setIsTaskModalOpen(false);
       setNewTask({
         title: '',
@@ -168,6 +235,24 @@ export default function Dashboard() {
       console.error(err);
       alert('Failed to schedule calendar event.');
     }
+  };
+
+  const handleSaveCustomTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTemplateForm.title || !newTemplateForm.body) return;
+
+    await db.templates.add({
+      templateKey: `custom_${Date.now()}`,
+      category: newTemplateForm.category,
+      title: newTemplateForm.title,
+      subject: newTemplateForm.subject,
+      body: newTemplateForm.body,
+      updatedAt: new Date().toISOString(),
+    });
+
+    setNewTemplateForm({ title: '', category: 'Custom', subject: '', body: '' });
+    setIsNewTemplateModalOpen(false);
+    await loadData();
   };
 
   const searchCompaniesHouse = async (e: React.FormEvent) => {
@@ -198,7 +283,7 @@ export default function Dashboard() {
     e.preventDefault();
     if (!newContact.name || !newContact.email) return;
 
-    await db.contacts.add({
+    const newId = await db.contacts.add({
       ...newContact,
       synced: false,
       updatedAt: new Date().toISOString(),
@@ -211,10 +296,67 @@ export default function Dashboard() {
       timestamp: Date.now(),
     });
 
+    authenticateToken().then(t => {
+      logAuditEvent(t, folderId, {
+        timestamp: new Date().toISOString(),
+        actor: senderName,
+        action: 'CREATE_CONTACT',
+        entityId: `Contact_${newId}`,
+        details: `Intake contact ${newContact.name} at ${newContact.company} (CRN: ${newContact.crn || 'N/A'})`,
+      }).then(() => {
+        const cachedAudit = localStorage.getItem('biscuit_crm_audit_sheet_id');
+        if (cachedAudit) setAuditSheetId(cachedAudit);
+      });
+    }).catch(console.warn);
+
     setNewContact({ name: '', company: '', crn: '', email: '', phone: '', stage: 'Lead' });
     setIsModalOpen(false);
     await loadData();
   };
+
+  const handleCopyTemplate = (tpl: { id: string; body: string }) => {
+    const populated = replaceTokens(tpl.body, {
+      contact_name: selectedContactForTemplate?.name,
+      company: selectedContactForTemplate?.company,
+      crn: selectedContactForTemplate?.crn,
+      stage: selectedContactForTemplate?.stage,
+      sender_name: senderName,
+    });
+    navigator.clipboard.writeText(populated);
+    setCopiedId(tpl.id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleOpenInGmail = (tpl: { subject?: string; body: string }) => {
+    const recipient = selectedContactForTemplate?.email || '';
+    const subject = encodeURIComponent(replaceTokens(tpl.subject || '', {
+      contact_name: selectedContactForTemplate?.name,
+      company: selectedContactForTemplate?.company,
+      crn: selectedContactForTemplate?.crn,
+      sender_name: senderName,
+    }));
+    const body = encodeURIComponent(replaceTokens(tpl.body, {
+      contact_name: selectedContactForTemplate?.name,
+      company: selectedContactForTemplate?.company,
+      crn: selectedContactForTemplate?.crn,
+      stage: selectedContactForTemplate?.stage,
+      sender_name: senderName,
+    }));
+
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${recipient}&su=${subject}&body=${body}`, '_blank');
+  };
+
+  const allTemplates = [
+    ...DEFAULT_TEMPLATES,
+    ...customTemplates.map(t => ({
+      id: `stored_${t.id}`,
+      category: t.category,
+      title: t.title,
+      subject: t.subject,
+      body: t.body,
+      isCustom: true,
+    })),
+  ];
 
   const hasUnsynced = contacts.some(c => !c.synced);
 
@@ -228,6 +370,15 @@ export default function Dashboard() {
           <p className="text-sm text-slate-400 mt-1">Zero-Storage Business Operating System</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsCommandOpen(true)}
+            className="flex items-center gap-2 bg-slate-900 border border-slate-800 hover:border-slate-700 px-3 py-1.5 rounded-lg text-xs text-slate-400 transition"
+          >
+            <Search className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Search & Actions</span>
+            <kbd className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">⌘K</kbd>
+          </button>
+
           <div className="flex bg-slate-900 border border-slate-800 rounded-lg p-0.5">
             <button
               onClick={() => setViewMode('kanban')}
@@ -247,11 +398,21 @@ export default function Dashboard() {
             >
               <CalendarIcon className="w-3.5 h-3.5" /> Gantt & Milestones
             </button>
+            <button
+              onClick={() => setViewMode('templates')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 transition ${viewMode === 'templates' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              <BookOpen className="w-3.5 h-3.5" /> Template Vault
+            </button>
           </div>
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+
+          <button
+            onClick={() => setIsHealthOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition"
+          >
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             System Live
-          </span>
+          </button>
         </div>
       </header>
 
@@ -293,14 +454,36 @@ export default function Dashboard() {
             </a>
           )}
 
-          {viewMode === 'gantt' ? (
+          {auditSheetId && (
+            <a
+              href={`https://docs.google.com/spreadsheets/d/${auditSheetId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-indigo-400 hover:underline px-2 py-1 bg-indigo-500/5 rounded border border-indigo-500/10"
+            >
+              Drive Audit Ledger <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+
+          {viewMode === 'gantt' && (
             <button
               onClick={() => setIsTaskModalOpen(true)}
               className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-xs transition shadow-md shadow-amber-500/10"
             >
               <Plus className="w-3.5 h-3.5" /> New Calendar Milestone
             </button>
-          ) : (
+          )}
+
+          {viewMode === 'templates' && (
+            <button
+              onClick={() => setIsNewTemplateModalOpen(true)}
+              className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-xs transition shadow-md shadow-amber-500/10"
+            >
+              <Plus className="w-3.5 h-3.5" /> Create New Template
+            </button>
+          )}
+
+          {(viewMode === 'kanban' || viewMode === 'table') && (
             <button
               onClick={() => setIsModalOpen(true)}
               className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-xs transition shadow-md shadow-amber-500/10"
@@ -311,7 +494,114 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Main View Area */}
+      {/* Template Vault View */}
+      {viewMode === 'templates' && (
+        <section className="space-y-6 mb-8">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="font-bold text-slate-100 text-base flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-amber-400" /> Standardized Template & Battlecard Vault
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Automatically substitute pipeline tokens with live Dexie records
+              </p>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5">
+                <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="text-xs text-slate-400">Rep / Sender:</span>
+                <input
+                  type="text"
+                  value={senderName}
+                  onChange={(e) => handleUpdateSenderName(e.target.value)}
+                  className="bg-transparent text-xs text-slate-100 focus:outline-none w-32 border-b border-dashed border-slate-700 focus:border-amber-400"
+                  placeholder="Your Name"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">Inject Contact:</span>
+                <select
+                  value={selectedContactForTemplate?.id || ''}
+                  onChange={(e) => {
+                    const target = contacts.find(c => c.id === Number(e.target.value));
+                    if (target) setSelectedContactForTemplate(target);
+                  }}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                >
+                  {contacts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.company})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {allTemplates.map((tpl) => {
+              const populatedBody = replaceTokens(tpl.body, {
+                contact_name: selectedContactForTemplate?.name,
+                company: selectedContactForTemplate?.company,
+                crn: selectedContactForTemplate?.crn,
+                stage: selectedContactForTemplate?.stage,
+                sender_name: senderName,
+              });
+
+              return (
+                <div key={tpl.id} className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 flex flex-col justify-between shadow-sm">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`text-[10px] uppercase font-semibold tracking-wider px-2 py-0.5 rounded border ${
+                        tpl.isCustom 
+                          ? 'border-indigo-500/30 text-indigo-400 bg-indigo-500/10' 
+                          : 'border-amber-500/20 text-amber-400 bg-amber-500/10'
+                      }`}>
+                        {tpl.category}
+                      </span>
+                      {tpl.isCustom && <span className="text-[10px] text-slate-500 font-mono">Custom</span>}
+                    </div>
+                    <h3 className="font-semibold text-slate-100 text-sm mb-3">{tpl.title}</h3>
+
+                    <div className="p-3 rounded-lg bg-slate-950/80 border border-slate-800/80 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto mb-4">
+                      {populatedBody}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2 border-t border-slate-800/60">
+                    <button
+                      onClick={() => handleCopyTemplate(tpl)}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition"
+                    >
+                      {copiedId === tpl.id ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" /> Copied!
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" /> Copy Script
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => handleOpenInGmail(tpl)}
+                      className="inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition"
+                      title="Open draft in Gmail"
+                    >
+                      <Mail className="w-3.5 h-3.5" /> Gmail Draft
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Kanban View */}
       {viewMode === 'kanban' && (
         <section className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
           {PIPELINE_STAGES.map((col, idx) => {
@@ -374,6 +664,7 @@ export default function Dashboard() {
         </section>
       )}
 
+      {/* Table View */}
       {viewMode === 'table' && (
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
@@ -433,6 +724,7 @@ export default function Dashboard() {
         </section>
       )}
 
+      {/* Gantt View */}
       {viewMode === 'gantt' && (
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-6 mb-8">
           <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-6">
@@ -463,7 +755,6 @@ export default function Dashboard() {
                     </span>
                   </div>
 
-                  {/* Visual Timeline Bar */}
                   <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden mt-3">
                     <div 
                       className="bg-gradient-to-r from-indigo-500 to-amber-500 h-full rounded-full transition-all duration-500" 
@@ -482,89 +773,87 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Modal: New Calendar Milestone */}
-      {isTaskModalOpen && (
+      {/* Global Command Palette Component */}
+      <CommandPalette
+        isOpen={isCommandOpen}
+        onClose={() => setIsCommandOpen(false)}
+        contacts={contacts}
+        onSelectView={(mode) => setViewMode(mode)}
+        onOpenNewContact={() => setIsModalOpen(true)}
+        onOpenNewMilestone={() => setIsTaskModalOpen(true)}
+        onOpenNewTemplate={() => setIsNewTemplateModalOpen(true)}
+      />
+
+      {/* Pre-Flight Health Diagnostic Wizard */}
+      <HealthWizard
+        isOpen={isHealthOpen}
+        onClose={() => setIsHealthOpen(false)}
+        folderId={folderId}
+      />
+
+      {/* Modal: Create New Template */}
+      {isNewTemplateModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
               <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
-                <CalendarIcon className="w-5 h-5 text-indigo-400" /> New Calendar Milestone
+                <BookOpen className="w-5 h-5 text-amber-400" /> Create Custom Battlecard / Template
               </h3>
-              <button onClick={() => setIsTaskModalOpen(false)} className="text-slate-400 hover:text-slate-200">✕</button>
+              <button onClick={() => setIsNewTemplateModalOpen(false)} className="text-slate-400 hover:text-slate-200">✕</button>
             </div>
 
-            <form onSubmit={handleCreateTask} className="space-y-4">
+            <form onSubmit={handleSaveCustomTemplate} className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">Task / Phase Title</label>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Template Title</label>
                 <input
                   type="text"
-                  placeholder="e.g. Contract Signoff & Delivery Setup"
-                  value={newTask.title}
-                  onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                  placeholder="e.g. Invoicing & Final Signoff"
+                  value={newTemplateForm.title}
+                  onChange={(e) => setNewTemplateForm({ ...newTemplateForm, title: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
                   required
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">Company / Account</label>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Email Subject Line</label>
                 <input
                   type="text"
-                  value={newTask.companyName}
-                  onChange={(e) => setNewTask({ ...newTask, companyName: e.target.value })}
+                  placeholder="e.g. Agreement documents for {{company}}"
+                  value={newTemplateForm.subject}
+                  onChange={(e) => setNewTemplateForm({ ...newTemplateForm, subject: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-slate-400">Template Body</label>
+                  <span className="text-[10px] text-slate-500 font-mono">Tokens: &#123;&#123;contact_name&#125;&#125;, &#123;&#123;company&#125;&#125;, &#123;&#123;crn&#125;&#125;, &#123;&#123;sender_name&#125;&#125;</span>
+                </div>
+                <textarea
+                  rows={6}
+                  placeholder="Hi {{contact_name}},&#10;&#10;Here are the details for {{company}}...&#10;&#10;Best,&#10;{{sender_name}}"
+                  value={newTemplateForm.body}
+                  onChange={(e) => setNewTemplateForm({ ...newTemplateForm, body: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-100 leading-relaxed"
                   required
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Start Date</label>
-                  <input
-                    type="date"
-                    value={newTask.startDate}
-                    onChange={(e) => setNewTask({ ...newTask, startDate: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">End Date</label>
-                  <input
-                    type="date"
-                    value={newTask.endDate}
-                    onChange={(e) => setNewTask({ ...newTask, endDate: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">Progress ({newTask.progress}%)</label>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={newTask.progress}
-                  onChange={(e) => setNewTask({ ...newTask, progress: Number(e.target.value) })}
-                  className="w-full accent-amber-500"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3">
+              <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setIsTaskModalOpen(false)}
+                  onClick={() => setIsNewTemplateModalOpen(false)}
                   className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-2 rounded-lg text-sm transition"
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm transition"
                 >
-                  Create & Schedule on Calendar
+                  Save to Vault
                 </button>
               </div>
             </form>
