@@ -6,7 +6,7 @@ import {
   FileText, CheckCircle2, Loader2, FolderCheck, Plus, Search, 
   RefreshCw, ExternalLink, ChevronRight, ArrowRight, LayoutGrid, List, Clock,
   BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin,
-  Cloud, CloudOff
+  Cloud, CloudOff, Hash
 } from 'lucide-react';
 import { db, Contact, ProjectTask, StoredTemplate } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
@@ -78,6 +78,7 @@ export default function Dashboard() {
   });
 
   const [newContact, setNewContact] = useState({
+    accountNumber: '',
     name: '',
     company: '',
     crn: '',
@@ -99,7 +100,19 @@ export default function Dashboard() {
   ].join(' ');
 
   const loadData = async () => {
-    const contactList = await db.contacts.toArray();
+    const rawContacts = await db.contacts.toArray();
+    
+    // Backfill any existing records without an Account Number
+    const contactList: Contact[] = [];
+    for (const c of rawContacts) {
+      if (!c.accountNumber && c.id) {
+        const generatedAcc = `ACC-${10000 + c.id}`;
+        await db.contacts.update(c.id, { accountNumber: generatedAcc });
+        c.accountNumber = generatedAcc;
+      }
+      contactList.push(c);
+    }
+
     const taskList = await db.projects.toArray();
     const storedTpls = await db.templates.toArray();
     setContacts(contactList);
@@ -153,7 +166,6 @@ export default function Dashboard() {
     }
   }, [isSyncing, folderId, authenticateToken]);
 
-  // Debounced Auto-Sync Trigger
   const triggerDebouncedSync = useCallback(() => {
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(() => {
@@ -189,6 +201,22 @@ export default function Dashboard() {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
   }, [handleSyncToSheets]);
+
+  const handleOpenAddModal = () => {
+    setNewContact({
+      accountNumber: `ACC-${Math.floor(10000 + Math.random() * 90000)}`,
+      name: '',
+      company: '',
+      crn: '',
+      email: '',
+      phone: '',
+      accountManager: '',
+      billingAddress: '',
+      shippingAddress: '',
+      stage: 'Lead',
+    });
+    setIsModalOpen(true);
+  };
 
   const handleUpdateSenderName = (name: string) => {
     setSenderName(name);
@@ -236,7 +264,7 @@ export default function Dashboard() {
         actor: senderName,
         action: 'UPDATE_STAGE',
         entityId: `Contact_${contact.id}`,
-        details: `Advanced stage from "${contact.stage}" to "${nextStage}" for ${contact.name} (${contact.company})`,
+        details: `Advanced stage from "${contact.stage}" to "${nextStage}" for ${contact.name} [${contact.accountNumber}]`,
       }).then(() => {
         const cachedAudit = localStorage.getItem('biscuit_crm_audit_sheet_id');
         if (cachedAudit) setAuditSheetId(cachedAudit);
@@ -337,8 +365,11 @@ export default function Dashboard() {
     e.preventDefault();
     if (!newContact.name || !newContact.email) return;
 
+    const assignedAcc = newContact.accountNumber || `ACC-${Math.floor(10000 + Math.random() * 90000)}`;
+
     const newId = await db.contacts.add({
       ...newContact,
+      accountNumber: assignedAcc,
       synced: false,
       updatedAt: new Date().toISOString(),
     });
@@ -346,7 +377,7 @@ export default function Dashboard() {
     await db.outbox.add({
       type: 'INSERT',
       table: 'contacts',
-      payload: newContact,
+      payload: { ...newContact, accountNumber: assignedAcc },
       timestamp: Date.now(),
     });
 
@@ -356,24 +387,13 @@ export default function Dashboard() {
         actor: senderName,
         action: 'CREATE_CONTACT',
         entityId: `Contact_${newId}`,
-        details: `Intake contact ${newContact.name} at ${newContact.company}`,
+        details: `Intake customer ${newContact.name} [Account No: ${assignedAcc}]`,
       }).then(() => {
         const cachedAudit = localStorage.getItem('biscuit_crm_audit_sheet_id');
         if (cachedAudit) setAuditSheetId(cachedAudit);
       });
     }).catch(console.warn);
 
-    setNewContact({ 
-      name: '', 
-      company: '', 
-      crn: '', 
-      email: '', 
-      phone: '', 
-      accountManager: '', 
-      billingAddress: '', 
-      shippingAddress: '', 
-      stage: 'Lead' 
-    });
     setIsModalOpen(false);
     await loadData();
     triggerDebouncedSync();
@@ -381,6 +401,7 @@ export default function Dashboard() {
 
   const handleCopyTemplate = (tpl: { id: string; body: string }) => {
     const populated = replaceTokens(tpl.body, {
+      account_number: selectedContactForTemplate?.accountNumber,
       contact_name: selectedContactForTemplate?.name,
       company: selectedContactForTemplate?.company,
       crn: selectedContactForTemplate?.crn,
@@ -395,12 +416,14 @@ export default function Dashboard() {
   const handleOpenInGmail = (tpl: { subject?: string; body: string }) => {
     const recipient = selectedContactForTemplate?.email || '';
     const subject = encodeURIComponent(replaceTokens(tpl.subject || '', {
+      account_number: selectedContactForTemplate?.accountNumber,
       contact_name: selectedContactForTemplate?.name,
       company: selectedContactForTemplate?.company,
       crn: selectedContactForTemplate?.crn,
       sender_name: senderName,
     }));
     const body = encodeURIComponent(replaceTokens(tpl.body, {
+      account_number: selectedContactForTemplate?.accountNumber,
       contact_name: selectedContactForTemplate?.name,
       company: selectedContactForTemplate?.company,
       crn: selectedContactForTemplate?.crn,
@@ -481,7 +504,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Persistence Banner with Automated Background Engine */}
+      {/* Persistence Banner */}
       <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 flex items-center justify-between mb-8 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -491,14 +514,13 @@ export default function Dashboard() {
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-slate-100">Live Workspace Persistence Link</h3>
               
-              {/* Dynamic Sync Status Badge */}
               {isSyncing ? (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
                   <RefreshCw className="w-3 h-3 animate-spin" /> Auto-syncing to Sheets...
                 </span>
               ) : !isOnline ? (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-red-500/10 text-red-400 border border-red-500/30">
-                  <CloudOff className="w-3 h-3" /> Offline (Changes Queued)
+                  <CloudOff className="w-3 h-3" /> Offline (Queued)
                 </span>
               ) : hasUnsynced ? (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30">
@@ -583,10 +605,10 @@ export default function Dashboard() {
 
           {(viewMode === 'kanban' || viewMode === 'table') && (
             <button
-              onClick={() => setIsModalOpen(true)}
+              onClick={handleOpenAddModal}
               className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-xs transition shadow-md shadow-amber-500/10"
             >
-              <Plus className="w-3.5 h-3.5" /> Add Lead & UK CRN
+              <Plus className="w-3.5 h-3.5" /> Add Customer Account
             </button>
           )}
         </div>
@@ -621,7 +643,7 @@ export default function Dashboard() {
                             <span>{c.name}</span>
                             <Eye className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 text-amber-400 transition-opacity" />
                           </div>
-                          <div className="text-[11px] text-slate-400 mt-0.5">{c.company}</div>
+                          <div className="text-[11px] text-slate-400 mt-0.5">{c.company || 'Private Account'}</div>
                         </div>
                         {c.synced ? (
                           <span className="w-2 h-2 rounded-full bg-emerald-400" title="Synced to Sheets" />
@@ -630,11 +652,17 @@ export default function Dashboard() {
                         )}
                       </div>
 
-                      {c.crn && (
-                        <div className="text-[10px] font-mono text-sky-400 bg-sky-950/40 border border-sky-900/40 px-2 py-0.5 rounded w-fit">
-                          CRN: {c.crn}
-                        </div>
-                      )}
+                      {/* Primary Account Badge & Optional CRN */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded font-semibold">
+                          {c.accountNumber}
+                        </span>
+                        {c.crn && (
+                          <span className="text-[10px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded">
+                            CRN: {c.crn}
+                          </span>
+                        )}
+                      </div>
 
                       {c.accountManager && (
                         <div className="text-[10px] text-slate-400 flex items-center gap-1">
@@ -682,13 +710,14 @@ export default function Dashboard() {
       {viewMode === 'table' && (
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-            <h2 className="font-semibold text-slate-200 text-sm">All Pipeline Contacts</h2>
+            <h2 className="font-semibold text-slate-200 text-sm">All Customer Accounts</h2>
             <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full">{contacts.length} Records</span>
           </div>
           <table className="w-full text-left text-sm text-slate-300">
             <thead className="bg-slate-900/80 text-xs uppercase text-slate-400 border-b border-slate-800">
               <tr>
-                <th className="px-6 py-3">Contact</th>
+                <th className="px-6 py-3">Account No</th>
+                <th className="px-6 py-3">Customer</th>
                 <th className="px-6 py-3">Company & CRN</th>
                 <th className="px-6 py-3">Account Manager</th>
                 <th className="px-6 py-3">Stage</th>
@@ -703,13 +732,16 @@ export default function Dashboard() {
                   onClick={() => setSelectedDealForDrawer(c)}
                   className="hover:bg-slate-800/30 cursor-pointer"
                 >
+                  <td className="px-6 py-4 font-mono text-emerald-400 font-semibold text-xs">
+                    {c.accountNumber}
+                  </td>
                   <td className="px-6 py-4">
                     <div className="font-semibold text-slate-100 hover:text-amber-400">{c.name}</div>
                     <div className="text-xs text-slate-400">{c.email}</div>
                   </td>
                   <td className="px-6 py-4">
                     <div>{c.company || '—'}</div>
-                    {c.crn && <span className="text-xs font-mono text-sky-400">CRN: {c.crn}</span>}
+                    {c.crn && <span className="text-xs font-mono text-slate-400">CRN: {c.crn}</span>}
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-xs text-slate-300">{c.accountManager || 'Unassigned'}</span>
@@ -807,7 +839,7 @@ export default function Dashboard() {
                 <BookOpen className="w-5 h-5 text-amber-400" /> Standardized Template & Battlecard Vault
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Automatically substitute pipeline tokens with live Dexie records
+                Automatically substitute pipeline tokens with live customer account numbers
               </p>
             </div>
 
@@ -825,7 +857,7 @@ export default function Dashboard() {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">Inject Contact:</span>
+                <span className="text-xs text-slate-400">Inject Customer:</span>
                 <select
                   value={selectedContactForTemplate?.id || ''}
                   onChange={(e) => {
@@ -836,7 +868,7 @@ export default function Dashboard() {
                 >
                   {contacts.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name} ({c.company})
+                      [{c.accountNumber}] {c.name} {c.company ? `(${c.company})` : ''}
                     </option>
                   ))}
                 </select>
@@ -847,6 +879,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {allTemplates.map((tpl) => {
               const populatedBody = replaceTokens(tpl.body, {
+                account_number: selectedContactForTemplate?.accountNumber,
                 contact_name: selectedContactForTemplate?.name,
                 company: selectedContactForTemplate?.company,
                 crn: selectedContactForTemplate?.crn,
@@ -917,186 +950,127 @@ export default function Dashboard() {
         }}
       />
 
-      {/* Global Command Palette Component */}
+      {/* Command Palette */}
       <CommandPalette
         isOpen={isCommandOpen}
         onClose={() => setIsCommandOpen(false)}
         contacts={contacts}
         onSelectView={(mode) => setViewMode(mode)}
-        onOpenNewContact={() => setIsModalOpen(true)}
+        onOpenNewContact={handleOpenAddModal}
         onOpenNewMilestone={() => setIsTaskModalOpen(true)}
         onOpenNewTemplate={() => setIsNewTemplateModalOpen(true)}
       />
 
-      {/* Pre-Flight Health Diagnostic Wizard */}
+      {/* Health Diagnostic Wizard */}
       <HealthWizard
         isOpen={isHealthOpen}
         onClose={() => setIsHealthOpen(false)}
         folderId={folderId}
       />
 
-      {/* Modal: Create New Template */}
-      {isNewTemplateModalOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
-              <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-amber-400" /> Create Custom Battlecard / Template
-              </h3>
-              <button onClick={() => setIsNewTemplateModalOpen(false)} className="text-slate-400 hover:text-slate-200">✕</button>
-            </div>
-
-            <form onSubmit={handleSaveCustomTemplate} className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">Template Title</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Invoicing & Final Signoff"
-                  value={newTemplateForm.title}
-                  onChange={(e) => setNewTemplateForm({ ...newTemplateForm, title: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">Email Subject Line</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Agreement documents for {{company}}"
-                  value={newTemplateForm.subject}
-                  onChange={(e) => setNewTemplateForm({ ...newTemplateForm, subject: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-slate-400">Template Body</label>
-                  <span className="text-[10px] text-slate-500 font-mono">Tokens: &#123;&#123;contact_name&#125;&#125;, &#123;&#123;company&#125;&#125;, &#123;&#123;crn&#125;&#125;, &#123;&#123;sender_name&#125;&#125;</span>
-                </div>
-                <textarea
-                  rows={6}
-                  placeholder="Hi {{contact_name}},&#10;&#10;Here are the details for {{company}}...&#10;&#10;Best,&#10;{{sender_name}}"
-                  value={newTemplateForm.body}
-                  onChange={(e) => setNewTemplateForm({ ...newTemplateForm, body: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-100 leading-relaxed"
-                  required
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsNewTemplateModalOpen(false)}
-                  className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm transition"
-                >
-                  Save to Vault
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: UK Companies House Lead Intake */}
+      {/* Modal: Add Customer Account */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
-              <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-sky-400" /> UK Companies House Lead Intake
-              </h3>
+              <div>
+                <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
+                  <UserCheck className="w-5 h-5 text-amber-400" /> Add Customer Account
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Assigned Account Reference: <span className="font-mono text-emerald-400 font-semibold">{newContact.accountNumber}</span>
+                </p>
+              </div>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-200">✕</button>
             </div>
 
-            <form onSubmit={searchCompaniesHouse} className="mb-4">
-              <label className="text-xs font-semibold text-slate-300 block mb-1">Live CRN Lookup</label>
+            {/* Optional UK Companies House Lookup */}
+            <div className="mb-4 p-3.5 bg-slate-950/60 rounded-xl border border-slate-800/80">
+              <label className="text-xs font-semibold text-slate-300 block mb-1">
+                Optional: UK Companies House Autofill (If Business Customer)
+              </label>
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="e.g. Dyson, Revolut, Monzo..."
+                  placeholder="Search registered UK company name..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 flex-1 focus:outline-none focus:border-sky-500"
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 flex-1 focus:outline-none focus:border-sky-500"
                 />
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={searchCompaniesHouse}
                   disabled={isSearching}
-                  className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm transition flex items-center gap-1.5"
+                  className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5"
                 >
-                  {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                  Search
+                  {isSearching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                  Autofill
                 </button>
               </div>
-            </form>
 
-            {searchResults.length > 0 && (
-              <div className="mb-4 max-h-40 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950 p-2 space-y-1">
-                {searchResults.map((item, idx) => (
-                  <div
-                    key={idx}
-                    onClick={() => selectCompany(item)}
-                    className="p-2 rounded hover:bg-slate-800 cursor-pointer text-xs flex justify-between items-center transition"
-                  >
-                    <div>
-                      <div className="font-semibold text-slate-200">{item.title}</div>
-                      <div className="text-slate-400 text-[10px]">{item.address_snippet}</div>
+              {searchResults.length > 0 && (
+                <div className="mt-2 max-h-36 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950 p-2 space-y-1">
+                  {searchResults.map((item, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => selectCompany(item)}
+                      className="p-2 rounded hover:bg-slate-800 cursor-pointer text-xs flex justify-between items-center transition"
+                    >
+                      <div>
+                        <div className="font-semibold text-slate-200">{item.title}</div>
+                        <div className="text-slate-400 text-[10px]">{item.address_snippet}</div>
+                      </div>
+                      <span className="font-mono text-sky-400 shrink-0 ml-2">#{item.company_number}</span>
                     </div>
-                    <span className="font-mono text-sky-400 shrink-0 ml-2">#{item.company_number}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
 
             <form onSubmit={handleCreateContact} className="space-y-3.5">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Company Name</label>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Account Number</label>
                   <input
                     type="text"
-                    value={newContact.company}
-                    onChange={(e) => setNewContact({ ...newContact, company: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
+                    value={newContact.accountNumber}
+                    onChange={(e) => setNewContact({ ...newContact, accountNumber: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-emerald-400 font-semibold"
                     required
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Company Number (CRN)</label>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Customer Full Name</label>
                   <input
                     type="text"
-                    value={newContact.crn}
-                    onChange={(e) => setNewContact({ ...newContact, crn: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-sky-400"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Contact Name</label>
-                  <input
-                    type="text"
+                    placeholder="e.g. David Clarke"
                     value={newContact.name}
                     onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
                     required
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Account Manager</label>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Company (Optional)</label>
                   <input
                     type="text"
-                    placeholder="e.g. Sarah Jenkins"
-                    value={newContact.accountManager}
-                    onChange={(e) => setNewContact({ ...newContact, accountManager: e.target.value })}
+                    placeholder="Leave blank if retail customer"
+                    value={newContact.company}
+                    onChange={(e) => setNewContact({ ...newContact, company: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Company CRN (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 12849501"
+                    value={newContact.crn}
+                    onChange={(e) => setNewContact({ ...newContact, crn: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-slate-300"
                   />
                 </div>
               </div>
@@ -1124,6 +1098,17 @@ export default function Dashboard() {
                 </div>
               </div>
 
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Account Manager</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Sarah Jenkins"
+                  value={newContact.accountManager}
+                  onChange={(e) => setNewContact({ ...newContact, accountManager: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-400 block mb-1">Billing Address</label>
@@ -1136,7 +1121,7 @@ export default function Dashboard() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Shipping Address</label>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Shipping / Delivery Address</label>
                   <textarea
                     rows={2}
                     placeholder="Physical fulfillment destination"
@@ -1159,7 +1144,7 @@ export default function Dashboard() {
                   type="submit"
                   className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm transition"
                 >
-                  Save to Pipeline
+                  Save Customer Account
                 </button>
               </div>
             </form>

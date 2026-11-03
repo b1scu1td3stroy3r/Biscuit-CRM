@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { 
   X, Building2, Mail, Phone, Calendar, History, Briefcase, 
   CheckCircle2, Clock, ShieldCheck, ArrowRight, ExternalLink,
-  UserCheck, MapPin, FileEdit, Save, Check
+  UserCheck, MapPin, FileEdit, Save, Check, Hash
 } from 'lucide-react';
 import { Contact, ProjectTask, db } from '../packages/storage/src/db';
 
@@ -27,8 +27,8 @@ export default function DealDetailDrawer({
   const [relatedTasks, setRelatedTasks] = useState<ProjectTask[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'notes' | 'history' | 'deals'>('overview');
   
-  // Editable fields
   const [formData, setFormData] = useState({
+    accountNumber: '',
     name: '',
     company: '',
     crn: '',
@@ -46,6 +46,7 @@ export default function DealDetailDrawer({
     if (!contact) return;
 
     setFormData({
+      accountNumber: contact.accountNumber || `ACC-${contact.id ? 10000 + contact.id : 10001}`,
       name: contact.name || '',
       company: contact.company || '',
       crn: contact.crn || '',
@@ -131,12 +132,17 @@ export default function DealDetailDrawer({
                   {formData.name.charAt(0) || 'C'}
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-100">{formData.name}</h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-bold text-slate-100">{formData.name}</h2>
+                    <span className="font-mono text-emerald-400 text-xs bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded font-semibold">
+                      {formData.accountNumber}
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
                     <Building2 className="w-3.5 h-3.5 text-sky-400" />
-                    <span>{formData.company}</span>
+                    <span>{formData.company || 'Individual Account'}</span>
                     {formData.crn && (
-                      <span className="font-mono text-sky-400 text-[10px] bg-sky-950/40 border border-sky-900/40 px-1.5 py-0.5 rounded">
+                      <span className="font-mono text-slate-400 text-[10px] bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded">
                         CRN: {formData.crn}
                       </span>
                     )}
@@ -190,8 +196,6 @@ export default function DealDetailDrawer({
 
           {/* Body Content */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            
-            {/* Tab 1: Account Overview & Editable Fields */}
             {activeTab === 'overview' && (
               <div className="space-y-5">
                 <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 flex items-center justify-between">
@@ -213,28 +217,42 @@ export default function DealDetailDrawer({
                   )}
                 </div>
 
-                {/* Account Manager Assignment */}
-                <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-2">
-                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                    <UserCheck className="w-3.5 h-3.5 text-amber-400" /> Account Manager
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.accountManager}
-                    placeholder="e.g. Sarah Jenkins (Senior AE)"
-                    onChange={(e) => setFormData({ ...formData, accountManager: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
-                  />
+                {/* Account Number & Manager Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3.5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                      <Hash className="w-3.5 h-3.5 text-emerald-400" /> Account Number
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.accountNumber}
+                      onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-emerald-400 font-semibold focus:outline-none focus:border-emerald-400"
+                    />
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                      <UserCheck className="w-3.5 h-3.5 text-amber-400" /> Account Manager
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.accountManager}
+                      placeholder="e.g. Sarah Jenkins"
+                      onChange={(e) => setFormData({ ...formData, accountManager: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
                 </div>
 
-                {/* Contact Information Fields */}
+                {/* Contact Channels */}
                 <div className="space-y-3">
                   <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-mono">
                     Direct Contact Channels
                   </h3>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[11px] text-slate-400 block mb-1">Full Name</label>
+                      <label className="text-[11px] text-slate-400 block mb-1">Customer Name</label>
                       <input
                         type="text"
                         value={formData.name}
@@ -243,7 +261,7 @@ export default function DealDetailDrawer({
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] text-slate-400 block mb-1">Company</label>
+                      <label className="text-[11px] text-slate-400 block mb-1">Company (Optional)</label>
                       <input
                         type="text"
                         value={formData.company}
@@ -273,11 +291,21 @@ export default function DealDetailDrawer({
                   </div>
                 </div>
 
-                {/* Addresses */}
+                {/* Addresses & CRN */}
                 <div className="space-y-3">
                   <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-sky-400" /> Operational Addresses
+                    <MapPin className="w-3.5 h-3.5 text-sky-400" /> Operational & Business Details
                   </h3>
+                  <div>
+                    <label className="text-[11px] text-slate-400 block mb-1">Company CRN (If Business Customer)</label>
+                    <input
+                      type="text"
+                      value={formData.crn}
+                      placeholder="Optional e.g. 12849501"
+                      onChange={(e) => setFormData({ ...formData, crn: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
                   <div className="grid grid-cols-1 gap-3">
                     <div>
                       <label className="text-[11px] text-slate-400 block mb-1">Billing Address</label>
@@ -290,7 +318,7 @@ export default function DealDetailDrawer({
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] text-slate-400 block mb-1">Shipping / Fulfilment Address</label>
+                      <label className="text-[11px] text-slate-400 block mb-1">Shipping / Delivery Address</label>
                       <textarea
                         rows={2}
                         value={formData.shippingAddress}
@@ -304,14 +332,13 @@ export default function DealDetailDrawer({
               </div>
             )}
 
-            {/* Tab 2: Internal Notes */}
             {activeTab === 'notes' && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-1.5">
                     <FileEdit className="w-3.5 h-3.5 text-amber-400" /> Confidential Team Notes
                   </h3>
-                  <span className="text-[10px] text-slate-500 font-mono">Persists to Local IndexedDB & Sheets</span>
+                  <span className="text-[10px] text-slate-500 font-mono">Synced to Sheets Master</span>
                 </div>
 
                 <textarea
@@ -324,7 +351,6 @@ export default function DealDetailDrawer({
               </div>
             )}
 
-            {/* Tab 3: History & Audit */}
             {activeTab === 'history' && (
               <div className="space-y-4">
                 <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-1.5">
@@ -359,7 +385,6 @@ export default function DealDetailDrawer({
               </div>
             )}
 
-            {/* Tab 4: Milestones */}
             {activeTab === 'deals' && (
               <div className="space-y-4">
                 <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-1.5">
@@ -371,7 +396,7 @@ export default function DealDetailDrawer({
                     <Clock className="w-6 h-6 text-slate-600 mx-auto" />
                     <p className="text-xs text-slate-400 font-medium">No linked delivery milestones</p>
                     <p className="text-[11px] text-slate-600">
-                      Create milestone timelines in the Gantt & Milestones view for {formData.company}.
+                      Create milestone timelines in the Gantt & Milestones view for {formData.company || formData.name}.
                     </p>
                   </div>
                 ) : (
@@ -396,7 +421,6 @@ export default function DealDetailDrawer({
             )}
           </div>
 
-          {/* Footer with Save Changes */}
           <div className="p-5 border-t border-slate-800 bg-slate-900/60 flex items-center justify-between">
             <button
               onClick={onClose}

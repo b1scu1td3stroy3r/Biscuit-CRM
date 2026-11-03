@@ -2,6 +2,7 @@ import Dexie, { Table } from 'dexie';
 
 export interface Contact {
   id?: number;
+  accountNumber: string;
   name: string;
   company: string;
   crn: string;
@@ -64,8 +65,8 @@ export class BiscuitDatabase extends Dexie {
 
   constructor() {
     super('BiscuitDatabase');
-    this.version(2).stores({
-      contacts: '++id, name, company, crn, stage, synced, updatedAt',
+    this.version(3).stores({
+      contacts: '++id, accountNumber, name, company, crn, stage, synced, updatedAt',
       projects: '++id, title, companyName, synced, updatedAt',
       templates: '++id, templateKey, category, updatedAt',
       outbox: '++id, type, table, timestamp',
