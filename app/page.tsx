@@ -52,11 +52,11 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
     allowedTabs: ['kanban', 'telephony', 'templates']
   },
   Operations: { 
-    label: 'Operations & Logistics', 
+    label: 'Operations & CS', 
     icon: Wrench, 
     color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20', 
     defaultTab: 'gantt',
-    allowedTabs: ['gantt', 'telephony']
+    allowedTabs: ['gantt', 'telephony', 'table']
   },
   HR: { 
     label: 'People & HR', 
@@ -206,6 +206,7 @@ export default function Dashboard() {
     billingAddress: '',
     shippingAddress: '',
     stage: 'Prospect' as StageType,
+    dealValue: 0,
   });
 
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
@@ -375,7 +376,21 @@ export default function Dashboard() {
     setViewMode(DEPARTMENT_CONFIG[dept].defaultTab);
   };
 
+  // Context-aware manual business intake
   const handleOpenAddModal = (presetStage?: StageType) => {
+    let defaultStage: StageType = 'Prospect';
+    if (presetStage) {
+      defaultStage = presetStage;
+    } else if (department === 'Sales') {
+      defaultStage = 'Prospect';
+    } else if (department === 'Marketing') {
+      defaultStage = 'Lead';
+    } else if (department === 'Operations') {
+      defaultStage = 'Customer Service';
+    } else {
+      defaultStage = 'Lead';
+    }
+
     setNewContact({
       accountNumber: `ACC-${Math.floor(10000 + Math.random() * 90000)}`,
       name: '',
@@ -386,14 +401,42 @@ export default function Dashboard() {
       accountManager: senderName,
       billingAddress: '',
       shippingAddress: '',
-      stage: presetStage || (department === 'Sales' ? 'Prospect' : 'Lead'),
+      stage: defaultStage,
+      dealValue: 0,
     });
+    setSearchResults([]);
+    setSearchQuery('');
     setIsModalOpen(true);
   };
 
   const handleUpdateSenderName = (name: string) => {
     setSenderName(name);
     localStorage.setItem('biscuit_crm_sender_name', name);
+  };
+
+  const searchCompaniesHouse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    setIsSearching(true);
+    try {
+      const res = await fetch(`/api/companies-house?q=${encodeURIComponent(searchQuery)}`);
+      const data = await res.json();
+      setSearchResults(data.items || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const selectCompany = (item: any) => {
+    setNewContact({
+      ...newContact,
+      company: item.title,
+      crn: item.company_number,
+      billingAddress: item.address_snippet || '',
+    });
+    setSearchResults([]);
   };
 
   const advanceStage = async (contact: Contact) => {
@@ -501,11 +544,11 @@ export default function Dashboard() {
 
   const handleCreateContact = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newContact.name || !newContact.email) return;
+    if (!newContact.name && !newContact.company) return;
 
     const assignedAcc = newContact.accountNumber || `ACC-${Math.floor(10000 + Math.random() * 90000)}`;
 
-    await db.contacts.add({
+    const newId = await db.contacts.add({
       ...newContact,
       accountNumber: assignedAcc,
       synced: false,
@@ -519,6 +562,20 @@ export default function Dashboard() {
       timestamp: Date.now(),
     });
 
+    await awardRepXP(35, `Enrolled business ${newContact.company || newContact.name}`);
+
+    authenticateToken().then(t => {
+      if (folderId) {
+        logAuditEvent(t, folderId, {
+          timestamp: new Date().toISOString(),
+          actor: senderName,
+          action: 'CREATE_CONTACT',
+          entityId: `Contact_${newId}`,
+          details: `Manual business intake: ${newContact.company || newContact.name} [Account No: ${assignedAcc}] into stage "${newContact.stage}"`,
+        });
+      }
+    }).catch(console.warn);
+
     setIsModalOpen(false);
     await loadData();
     triggerDebouncedSync();
@@ -526,6 +583,13 @@ export default function Dashboard() {
 
   const isMD = department === 'MD';
   const isIT = department === 'IT';
+  const isSales = department === 'Sales';
+  const isMarketing = department === 'Marketing';
+  const isOperations = department === 'Operations';
+  
+  // Can manually add a business: Sales, Marketing, Customer Service (Operations), MD
+  const canAddBusiness = isMD || isSales || isMarketing || isOperations;
+
   const allowedTabs = DEPARTMENT_CONFIG[department].allowedTabs;
   const CurrentDeptIcon = DEPARTMENT_CONFIG[department].icon;
 
@@ -622,7 +686,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Dynamic Persistence Banner */}
+      {/* Role Action & Dynamic Persistence Banner */}
       <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-3">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -635,12 +699,26 @@ export default function Dashboard() {
               </h3>
             </div>
             <p className="text-[11px] text-slate-400">
-              Data is private to your Google account. Zero platform telemetry or centralized server storage.
+              Active User: <strong className="text-slate-200">{senderName}</strong> &bull; Department: <strong className="text-amber-400">{DEPARTMENT_CONFIG[department].label}</strong>
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Action Buttons: Add Business, Migrate, Sync */}
+        <div className="flex flex-wrap items-center gap-2">
+          {canAddBusiness && (
+            <button
+              onClick={() => handleOpenAddModal()}
+              className="inline-flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs transition shadow"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              {isSales && 'Add Lead / Account'}
+              {isMarketing && 'Add Inbound Lead'}
+              {isOperations && 'Add Customer Account'}
+              {isMD && 'Add New Business'}
+            </button>
+          )}
+
           {(isMD || isIT) && (
             <button
               onClick={() => setViewMode('import')}
@@ -653,7 +731,7 @@ export default function Dashboard() {
           {!token ? (
             <button
               onClick={() => handleSyncToSheets(false)}
-              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition"
+              className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition shadow"
             >
               <Database className="w-3.5 h-3.5" /> Connect Your Google Drive
             </button>
@@ -949,13 +1027,24 @@ export default function Dashboard() {
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
             <h2 className="font-semibold text-slate-200 text-sm">All Customer Accounts</h2>
-            <button
-              onClick={() => exportPipelineToCSV(contacts)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              Export Pipeline CSV
-            </button>
+            <div className="flex items-center gap-2">
+              {canAddBusiness && (
+                <button
+                  onClick={() => handleOpenAddModal()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Business / Account
+                </button>
+              )}
+              <button
+                onClick={() => exportPipelineToCSV(contacts)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                Export CSV
+              </button>
+            </div>
           </div>
           <table className="w-full text-left text-sm text-slate-300">
             <thead className="bg-slate-900/80 text-xs uppercase text-slate-400 border-b border-slate-800">
@@ -994,13 +1083,26 @@ export default function Dashboard() {
       {viewMode === 'gantt' && (isMD || allowedTabs.includes('gantt')) && (
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-6 mb-8">
           <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-6">
-            <h2 className="font-semibold text-slate-100 text-base">Project Milestones & Interactive Gantt</h2>
-            <button
-              onClick={() => setIsTaskModalOpen(true)}
-              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-xs transition"
-            >
-              + New Milestone
-            </button>
+            <div>
+              <h2 className="font-semibold text-slate-100 text-base">Project Milestones & Interactive Gantt</h2>
+              <p className="text-xs text-slate-400 mt-0.5">SLA fulfillment and delivery schedules</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {canAddBusiness && (
+                <button
+                  onClick={() => handleOpenAddModal('Customer Service')}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add CS Client
+                </button>
+              )}
+              <button
+                onClick={() => setIsTaskModalOpen(true)}
+                className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-3 py-1.5 rounded-lg text-xs transition"
+              >
+                + New Milestone
+              </button>
+            </div>
           </div>
           <div className="space-y-4">
             {tasks.map((task) => (
@@ -1033,6 +1135,194 @@ export default function Dashboard() {
             </div>
           ))}
         </section>
+      )}
+
+      {/* Manual Business Intake Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
+              <div>
+                <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-emerald-400" /> Manually Intake Business / Account
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Assigned Account Reference: <span className="font-mono text-emerald-400 font-semibold">{newContact.accountNumber}</span>
+                </p>
+              </div>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-200">✕</button>
+            </div>
+
+            {/* Optional UK Companies House Lookup */}
+            <div className="mb-4 p-3.5 bg-slate-950/60 rounded-xl border border-slate-800/80">
+              <label className="text-xs font-semibold text-slate-300 block mb-1">
+                Optional: UK Companies House Autofill (Auto-extract CRN & Address)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Search registered UK company name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 flex-1 focus:outline-none focus:border-sky-500"
+                />
+                <button
+                  type="button"
+                  onClick={searchCompaniesHouse}
+                  disabled={isSearching}
+                  className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5"
+                >
+                  {isSearching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                  Autofill
+                </button>
+              </div>
+
+              {searchResults.length > 0 && (
+                <div className="mt-2 max-h-36 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950 p-2 space-y-1">
+                  {searchResults.map((item, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => selectCompany(item)}
+                      className="p-2 rounded hover:bg-slate-800 cursor-pointer text-xs flex justify-between items-center transition"
+                    >
+                      <div>
+                        <div className="font-semibold text-slate-200">{item.title}</div>
+                        <div className="text-slate-400 text-[10px]">{item.address_snippet}</div>
+                      </div>
+                      <span className="font-mono text-sky-400 shrink-0 ml-2">#{item.company_number}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleCreateContact} className="space-y-3.5">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Target Funnel Stage</label>
+                  <select
+                    value={newContact.stage}
+                    onChange={(e) => setNewContact({ ...newContact, stage: e.target.value as any })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-400"
+                  >
+                    {PIPELINE_STAGES.map(s => (
+                      <option key={s.key} value={s.key}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Account Reference</label>
+                  <input
+                    type="text"
+                    value={newContact.accountNumber}
+                    onChange={(e) => setNewContact({ ...newContact, accountNumber: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-emerald-400 font-semibold"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Company / Organization Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Acme Corp"
+                    value={newContact.company}
+                    onChange={(e) => setNewContact({ ...newContact, company: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Primary Contact Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. David Clarke"
+                    value={newContact.name}
+                    onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    placeholder="client@company.co.uk"
+                    value={newContact.email}
+                    onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Phone Number (Click-to-Dial)</label>
+                  <input
+                    type="text"
+                    placeholder="+44 20 7946 0912"
+                    value={newContact.phone}
+                    onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-slate-100"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Companies House CRN</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 12849501"
+                    value={newContact.crn}
+                    onChange={(e) => setNewContact({ ...newContact, crn: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Contract / Deal Value (£)</label>
+                  <input
+                    type="number"
+                    placeholder="5000"
+                    value={newContact.dealValue || ''}
+                    onChange={(e) => setNewContact({ ...newContact, dealValue: Number(e.target.value) })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-emerald-400"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Registered Billing Address</label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. 100 High Street, London, EC1A 1BB"
+                  value={newContact.billingAddress}
+                  onChange={(e) => setNewContact({ ...newContact, billingAddress: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-100"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 text-xs text-slate-400 hover:text-slate-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs transition shadow"
+                >
+                  Save Business into CRM (+35 XP)
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Deal Detail Drawer */}
