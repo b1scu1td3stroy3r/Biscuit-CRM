@@ -14,6 +14,9 @@ export interface Contact {
   stage: 'Prospect' | 'Lead' | 'Sales' | 'Procurement' | 'Logistics' | 'Customer Service' | 'Winback';
   dealValue?: number;
   invoiceStatus?: 'Pending' | 'Drafted' | 'Issued' | 'Paid';
+  paymentLinkUrl?: string;
+  stripePaymentIntentId?: string;
+  paymentMethodUsed?: 'card' | 'bacs_debit' | 'manual_bank_transfer';
   mailchimpStatus?: 'Synced' | 'Pending' | 'Not Synced';
   lastCallDuration?: number;
   lastCallTimestamp?: string;
@@ -130,7 +133,7 @@ export class BiscuitDatabase extends Dexie {
 
   constructor() {
     super('BiscuitDatabase');
-    this.version(12).stores({
+    this.version(13).stores({
       contacts: '++id, accountNumber, name, company, crn, stage, accountManager, invoiceStatus, mailchimpStatus, phone, synced, updatedAt',
       projects: '++id, title, companyName, assignee, department, synced, updatedAt',
       templates: '++id, templateKey, category, updatedAt',
