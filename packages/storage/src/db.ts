@@ -8,7 +8,7 @@ export interface Contact {
   crn: string;
   email: string;
   phone: string;
-  stage: 'Lead' | 'Sales' | 'Procurement' | 'Logistics' | 'Customer Service';
+  stage: 'Prospect' | 'Lead' | 'Sales' | 'Procurement' | 'Logistics' | 'Customer Service' | 'Winback';
   accountManager?: string;
   billingAddress?: string;
   shippingAddress?: string;
@@ -85,7 +85,7 @@ export interface AuditRecord {
   id?: number;
   timestamp: string;
   actor: string;
-  action: string;
+  action: 'CREATE_CONTACT' | 'UPDATE_STAGE' | 'SCHEDULE_MILESTONE' | 'CREATE_TEMPLATE';
   entityId: string;
   details: string;
 }
@@ -102,7 +102,7 @@ export class BiscuitDatabase extends Dexie {
 
   constructor() {
     super('BiscuitDatabase');
-    this.version(5).stores({
+    this.version(6).stores({
       contacts: '++id, accountNumber, name, company, crn, stage, synced, updatedAt',
       projects: '++id, title, companyName, synced, updatedAt',
       templates: '++id, templateKey, category, updatedAt',
