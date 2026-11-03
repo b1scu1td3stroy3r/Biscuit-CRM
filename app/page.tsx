@@ -35,6 +35,43 @@ const PIPELINE_STAGES = [
 
 type StageType = typeof PIPELINE_STAGES[number]['key'];
 
+function getMilestoneConfigForStage(stage: StageType, companyOrName: string) {
+  const today = new Date();
+  const format = (d: Date) => d.toISOString().slice(0, 10);
+
+  if (stage === 'Procurement') {
+    const end = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
+    return {
+      title: `Procurement & Supplier Agreement (${companyOrName})`,
+      startDate: format(today),
+      endDate: format(end),
+      progress: 15,
+    };
+  }
+
+  if (stage === 'Logistics') {
+    const end = new Date(today.getTime() + 5 * 24 * 60 * 60 * 1000);
+    return {
+      title: `Logistics Dispatch & Delivery Window (${companyOrName})`,
+      startDate: format(today),
+      endDate: format(end),
+      progress: 40,
+    };
+  }
+
+  if (stage === 'Customer Service') {
+    const end = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000);
+    return {
+      title: `Post-Onboarding Review & Retention SLA (${companyOrName})`,
+      startDate: format(today),
+      endDate: format(end),
+      progress: 80,
+    };
+  }
+
+  return null;
+}
+
 export default function Dashboard() {
   const [token, setToken] = useState<string | null>(null);
   const [folderId] = useState<string>('1WK1GE6vGTuS1KGCC607Jdkcc6464YaST');
@@ -238,6 +275,7 @@ export default function Dashboard() {
     }
   };
 
+  // Automated Stage-to-Milestone Calendar Generation Engine
   const advanceStage = async (contact: Contact) => {
     const currentIndex = PIPELINE_STAGES.findIndex(s => s.key === contact.stage);
     if (currentIndex >= PIPELINE_STAGES.length - 1) return;
@@ -258,17 +296,64 @@ export default function Dashboard() {
       timestamp: Date.now(),
     });
 
-    authenticateToken().then(t => {
-      logAuditEvent(t, folderId, {
+    // Reward Rep with +50 XP
+    try {
+      const allProfiles = await db.employees.toArray();
+      const profile = allProfiles.find(p => p.name.toLowerCase() === senderName.toLowerCase());
+      if (profile && profile.id) {
+        const updatedXP = profile.xp + 50;
+        const updatedLevel = Math.floor(updatedXP / 250) + 1;
+        await db.employees.update(profile.id, { xp: updatedXP, level: updatedLevel });
+      }
+    } catch (xpErr) {
+      console.warn('Could not increment XP on stage advance:', xpErr);
+    }
+
+    // Automated Stage-to-Milestone Trigger
+    const milestoneConfig = getMilestoneConfigForStage(nextStage, contact.company || contact.name);
+
+    authenticateToken().then(async (t) => {
+      let createdEventId: string | undefined;
+
+      if (milestoneConfig) {
+        try {
+          createdEventId = await syncTaskToGoogleCalendar(t, {
+            title: milestoneConfig.title,
+            companyName: contact.company || contact.name,
+            startDate: milestoneConfig.startDate,
+            endDate: milestoneConfig.endDate,
+            progress: milestoneConfig.progress,
+            synced: true,
+            updatedAt: now,
+          });
+
+          await db.projects.add({
+            title: milestoneConfig.title,
+            companyName: contact.company || contact.name,
+            startDate: milestoneConfig.startDate,
+            endDate: milestoneConfig.endDate,
+            progress: milestoneConfig.progress,
+            calendarEventId: createdEventId,
+            synced: true,
+            updatedAt: now,
+          });
+        } catch (calErr) {
+          console.warn('Milestone calendar auto-creation deferred:', calErr);
+        }
+      }
+
+      await logAuditEvent(t, folderId, {
         timestamp: now,
         actor: senderName,
-        action: 'UPDATE_STAGE',
+        action: 'UPDATE_STAGE_AND_MILESTONE',
         entityId: `Contact_${contact.id}`,
-        details: `Advanced stage from "${contact.stage}" to "${nextStage}" for ${contact.name} [${contact.accountNumber}]`,
-      }).then(() => {
-        const cachedAudit = localStorage.getItem('biscuit_crm_audit_sheet_id');
-        if (cachedAudit) setAuditSheetId(cachedAudit);
+        details: `Advanced stage to "${nextStage}" for ${contact.name} [${contact.accountNumber}]${
+          milestoneConfig ? ` & auto-scheduled GCal delivery milestone "${milestoneConfig.title}"` : ''
+        }`,
       });
+
+      const cachedAudit = localStorage.getItem('biscuit_crm_audit_sheet_id');
+      if (cachedAudit) setAuditSheetId(cachedAudit);
     }).catch(console.warn);
 
     await loadData();
@@ -467,7 +552,6 @@ export default function Dashboard() {
             <kbd className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">⌘K</kbd>
           </button>
 
-          {/* Navigation Bar */}
           <div className="flex bg-slate-900 border border-slate-800 rounded-lg p-0.5">
             <button
               onClick={() => setViewMode('kanban')}
@@ -485,7 +569,7 @@ export default function Dashboard() {
               onClick={() => setViewMode('gantt')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 transition ${viewMode === 'gantt' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
             >
-              <CalendarIcon className="w-3.5 h-3.5" /> Gantt & Milestones
+              <CalendarIcon className="w-3.5 h-3.5" /> Gantt & Milestones ({tasks.length})
             </button>
             <button
               onClick={() => setViewMode('templates')}
@@ -624,11 +708,11 @@ export default function Dashboard() {
       {/* View 1: Employee Hub */}
       {viewMode === 'hub' && (
         <EmployeeHub
-          onAuthenticateGoogle={authenticateToken}
           currentRepName={senderName}
           contacts={contacts}
           onRepNameChange={handleUpdateSenderName}
           onAdvanceContactStage={advanceStage}
+          onAuthenticateGoogle={authenticateToken}
         />
       )}
 
@@ -702,7 +786,7 @@ export default function Dashboard() {
                             e.stopPropagation();
                             advanceStage(c);
                           }}
-                          className="w-full mt-1 inline-flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700/60 transition"
+                          className="w-full mt-1 inline-flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700/60 transition group-hover:border-amber-500/40"
                         >
                           <span>Move Next</span>
                           <ChevronRight className="w-3.5 h-3.5 text-amber-400" />
@@ -813,7 +897,7 @@ export default function Dashboard() {
 
           {tasks.length === 0 ? (
             <div className="py-14 text-center text-slate-500 text-sm">
-              No milestones scheduled yet. Click <strong>+ New Calendar Milestone</strong> to plan your first project phase.
+              No milestones scheduled yet. Advance a deal or click <strong>+ New Calendar Milestone</strong>.
             </div>
           ) : (
             <div className="space-y-4">
