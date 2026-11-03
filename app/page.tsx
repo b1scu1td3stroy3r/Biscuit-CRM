@@ -8,7 +8,7 @@ import {
   BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin,
   Cloud, CloudOff, Hash, Users, Download, FileSpreadsheet, AlertTriangle, AlertCircle, Timer,
   Target, RotateCcw, Laptop, Briefcase, HeartHandshake, Megaphone, Wrench, PoundSterling, Crown,
-  Lock, Phone, PhoneCall, Upload, Flame, Sparkles
+  Lock, Phone, PhoneCall, Upload, Flame, Sparkles, LogOut
 } from 'lucide-react';
 import { db, Contact, ProjectTask, StoredTemplate, AuditRecord, DepartmentRole, EmployeeProfile, NewsItem } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
@@ -214,6 +214,7 @@ export default function Dashboard() {
 
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const tokenClientRef = useRef<any>(null);
 
   const SCOPES = [
     'https://www.googleapis.com/auth/userinfo.email',
@@ -265,98 +266,136 @@ export default function Dashboard() {
 
     const savedSupervisor = localStorage.getItem('biscuit_crm_supervisor_email');
     if (savedSupervisor) setSupervisorEmail(savedSupervisor);
-  };
 
-  const awardRepXP = async (amount: number, reason: string) => {
-    try {
-      const allProfiles = await db.employees.toArray();
-      let profile = allProfiles.find(p => p.name.toLowerCase() === senderName.toLowerCase());
+    // Hydrate persistent workspace config from localStorage
+    const cachedFolder = localStorage.getItem('biscuit_crm_drive_folder_id');
+    const cachedEmail = localStorage.getItem('biscuit_crm_user_email');
+    const cachedDomain = localStorage.getItem('biscuit_crm_user_domain');
+    const cachedIsPersonal = localStorage.getItem('biscuit_crm_is_personal') === 'true';
 
-      if (!profile) {
-        const newProf: EmployeeProfile = {
-          name: senderName,
-          role: 'Managing Director',
-          department: department,
-          tier: department === 'MD' ? 'Director' : 'Staff',
-          status: 'Active',
-          xp: 200,
-          level: 2,
-          dealsClosed: 0,
-          handoverActive: false,
-        };
-        const id = await db.employees.add(newProf);
-        profile = { ...newProf, id };
-      }
-
-      const prevProg = computeProgression((profile as any)?.tier || 'Staff', profile.xp);
-      const updatedXP = profile.xp + amount;
-      const nextProg = computeProgression((profile as any)?.tier || 'Staff', updatedXP);
-
-      await db.employees.update(profile.id!, {
-        xp: updatedXP,
-        level: nextProg.level,
-      });
-
-      setCurrentProfile({ ...profile, xp: updatedXP, level: nextProg.level });
-
-      // If user leveled up, post announcement across the company
-      if (nextProg.level > prevProg.level) {
-        await db.newsFeed.add({
-          title: `Level Up: ${profile.name} achieved Level ${nextProg.level}!`,
-          content: `${profile.name} advanced to ${nextProg.title} with ${updatedXP} XP.`,
-          category: 'Level Up',
-          department: 'Company-Wide',
-          actor: 'System XP Engine',
-          badgeColor: 'border-amber-500/30 text-amber-300 bg-amber-500/10',
-          createdAt: new Date().toISOString(),
+    if (cachedFolder) {
+      setFolderId(cachedFolder);
+      if (cachedEmail) {
+        setWorkspaceConfig({
+          userEmail: cachedEmail,
+          userName: savedSender || cachedEmail.split('@')[0],
+          domain: cachedDomain || '',
+          isPersonalAccount: cachedIsPersonal,
+          driveFolderId: cachedFolder,
         });
       }
-    } catch (e) {
-      console.warn('XP increment deferred:', e);
     }
   };
 
-  const authenticateToken = useCallback((): Promise<string> => {
+  // Google OAuth Token Resolver with Silent Refresh and Local Persistence
+  const authenticateToken = useCallback((interactive = true): Promise<string> => {
     return new Promise((resolve, reject) => {
+      // 1. Check existing token in state
       if (token) return resolve(token);
+
+      // 2. Check cached token and expiry in localStorage
+      const cachedToken = localStorage.getItem('biscuit_crm_google_token');
+      const tokenExpiresAt = Number(localStorage.getItem('biscuit_crm_google_token_exp') || '0');
+
+      if (cachedToken && Date.now() < tokenExpiresAt - 60000) {
+        setToken(cachedToken);
+        return resolve(cachedToken);
+      }
+
       if (!window.google) return reject(new Error('Google library not loaded'));
 
-      const client = window.google.accounts.oauth2.initTokenClient({
-        client_id: clientId,
-        scope: SCOPES,
-        callback: async (response: any) => {
-          if (response.error) return reject(response);
-          const accessToken = response.access_token;
-          setToken(accessToken);
-
-          try {
-            const ws = await resolveUserWorkspace(accessToken);
-            setWorkspaceConfig(ws);
-            setFolderId(ws.driveFolderId);
-            setSenderName(ws.userName);
-
-            const roster = await db.employees.toArray();
-            if (ws.isPersonalAccount || roster.length <= 1) {
-              setDepartment('MD');
-              localStorage.setItem('biscuit_crm_user_department', 'MD');
+      // 3. Initialize Token Client
+      if (!tokenClientRef.current) {
+        tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: SCOPES,
+          callback: async (response: any) => {
+            if (response.error) {
+              return reject(response);
             }
-          } catch (wsErr) {
-            console.warn('Workspace provisioning fallback:', wsErr);
-          }
 
-          resolve(accessToken);
-        },
-      });
-      client.requestAccessToken();
+            const accessToken = response.access_token;
+            const expiresIn = Number(response.expires_in || 3600);
+            const expTime = Date.now() + expiresIn * 1000;
+
+            // Cache token locally
+            localStorage.setItem('biscuit_crm_google_token', accessToken);
+            localStorage.setItem('biscuit_crm_google_token_exp', String(expTime));
+            setToken(accessToken);
+
+            try {
+              const ws = await resolveUserWorkspace(accessToken);
+              setWorkspaceConfig(ws);
+              setFolderId(ws.driveFolderId);
+              setSenderName(ws.userName);
+
+              // Cache workspace configuration
+              localStorage.setItem('biscuit_crm_drive_folder_id', ws.driveFolderId);
+              localStorage.setItem('biscuit_crm_user_email', ws.userEmail);
+              localStorage.setItem('biscuit_crm_user_domain', ws.domain);
+              localStorage.setItem('biscuit_crm_is_personal', String(ws.isPersonalAccount));
+              localStorage.setItem('biscuit_crm_sender_name', ws.userName);
+
+              const roster = await db.employees.toArray();
+              if (ws.isPersonalAccount || roster.length <= 1) {
+                setDepartment('MD');
+                localStorage.setItem('biscuit_crm_user_department', 'MD');
+              }
+            } catch (wsErr) {
+              console.warn('Workspace provisioning fallback:', wsErr);
+            }
+
+            resolve(accessToken);
+          },
+        });
+      }
+
+      // If interactive is false, try silent background refresh without user prompt
+      if (!interactive) {
+        tokenClientRef.current.requestAccessToken({ prompt: 'none' });
+      } else {
+        tokenClientRef.current.requestAccessToken();
+      }
     });
   }, [clientId, token, SCOPES]);
+
+  // Attempt automatic background reconnection on load
+  useEffect(() => {
+    const attemptSilentLogin = async () => {
+      const cachedToken = localStorage.getItem('biscuit_crm_google_token');
+      const tokenExpiresAt = Number(localStorage.getItem('biscuit_crm_google_token_exp') || '0');
+
+      if (cachedToken && Date.now() < tokenExpiresAt - 60000) {
+        setToken(cachedToken);
+      } else if (localStorage.getItem('biscuit_crm_drive_folder_id')) {
+        // If user logged in before, attempt silent renewal once Google scripts initialize
+        const checkGapi = setInterval(() => {
+          if (window.google?.accounts?.oauth2) {
+            clearInterval(checkGapi);
+            authenticateToken(false).catch(() => {
+              // Silent refresh denied or cookie expired; awaits manual click
+            });
+          }
+        }, 500);
+        setTimeout(() => clearInterval(checkGapi), 5000);
+      }
+    };
+
+    attemptSilentLogin();
+  }, [authenticateToken]);
+
+  const handleDisconnectGoogle = () => {
+    localStorage.removeItem('biscuit_crm_google_token');
+    localStorage.removeItem('biscuit_crm_google_token_exp');
+    setToken(null);
+  };
 
   const handleSyncToSheets = useCallback(async (silent = false) => {
     if (isSyncing || !navigator.onLine) return;
     setIsSyncing(true);
     try {
-      const activeToken = await authenticateToken();
-      let targetFolder = folderId;
+      const activeToken = await authenticateToken(!silent);
+      let targetFolder = folderId || localStorage.getItem('biscuit_crm_drive_folder_id') || '';
 
       if (!targetFolder) {
         const ws = await resolveUserWorkspace(activeToken);
@@ -411,6 +450,54 @@ export default function Dashboard() {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
   }, [handleSyncToSheets]);
+
+  const awardRepXP = async (amount: number, reason: string) => {
+    try {
+      const allProfiles = await db.employees.toArray();
+      let profile = allProfiles.find(p => p.name.toLowerCase() === senderName.toLowerCase());
+
+      if (!profile) {
+        const newProf: EmployeeProfile = {
+          name: senderName,
+          role: 'Managing Director',
+          department: department,
+          tier: department === 'MD' ? 'Director' : 'Staff',
+          status: 'Active',
+          xp: 200,
+          level: 2,
+          dealsClosed: 0,
+          handoverActive: false,
+        };
+        const id = await db.employees.add(newProf);
+        profile = { ...newProf, id };
+      }
+
+      const prevProg = computeProgression((profile as any)?.tier || 'Staff', profile.xp);
+      const updatedXP = profile.xp + amount;
+      const nextProg = computeProgression((profile as any)?.tier || 'Staff', updatedXP);
+
+      await db.employees.update(profile.id!, {
+        xp: updatedXP,
+        level: nextProg.level,
+      });
+
+      setCurrentProfile({ ...profile, xp: updatedXP, level: nextProg.level });
+
+      if (nextProg.level > prevProg.level) {
+        await db.newsFeed.add({
+          title: `Level Up: ${profile.name} achieved Level ${nextProg.level}!`,
+          content: `${profile.name} advanced to ${nextProg.title} with ${updatedXP} XP.`,
+          category: 'Level Up',
+          department: 'Company-Wide',
+          actor: 'System XP Engine',
+          badgeColor: 'border-amber-500/30 text-amber-300 bg-amber-500/10',
+          createdAt: new Date().toISOString(),
+        });
+      }
+    } catch (e) {
+      console.warn('XP increment deferred:', e);
+    }
+  };
 
   const handleSelectDepartment = (dept: DepartmentRole) => {
     setDepartment(dept);
@@ -502,7 +589,6 @@ export default function Dashboard() {
 
     await awardRepXP(50, `Advanced deal to ${nextStage}`);
 
-    // If deal won into Customer Service, broadcast announcement
     if (nextStage === 'Customer Service') {
       await db.newsFeed.add({
         title: `Deal Won: ${contact.company || contact.name} onboarded!`,
@@ -515,9 +601,10 @@ export default function Dashboard() {
       });
     }
 
-    authenticateToken().then(async (t) => {
-      if (folderId) {
-        await logAuditEvent(t, folderId, {
+    authenticateToken(false).then(async (t) => {
+      const activeFolder = folderId || localStorage.getItem('biscuit_crm_drive_folder_id');
+      if (activeFolder) {
+        await logAuditEvent(t, activeFolder, {
           timestamp: now,
           actor: senderName,
           action: 'UPDATE_STAGE',
@@ -618,9 +705,10 @@ export default function Dashboard() {
 
     await awardRepXP(35, `Enrolled business ${newContact.company || newContact.name}`);
 
-    authenticateToken().then(t => {
-      if (folderId) {
-        logAuditEvent(t, folderId, {
+    authenticateToken(false).then(t => {
+      const activeFolder = folderId || localStorage.getItem('biscuit_crm_drive_folder_id');
+      if (activeFolder) {
+        logAuditEvent(t, activeFolder, {
           timestamp: new Date().toISOString(),
           actor: senderName,
           action: 'CREATE_CONTACT',
@@ -658,7 +746,6 @@ export default function Dashboard() {
     })),
   ];
 
-  // Progression calculation for dashboard XP header
   const userTier = currentProfile?.tier || (isMD ? 'Director' : 'Staff');
   const userXP = currentProfile?.xp || 200;
   const prog = computeProgression(userTier, userXP);
@@ -815,6 +902,11 @@ export default function Dashboard() {
               <h3 className="text-xs font-semibold text-slate-200">
                 User Private Drive Workspace: {folderId ? <code className="font-mono text-emerald-400 text-[11px]">{folderId}</code> : 'Awaiting Google Authentication'}
               </h3>
+              {token && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                  <CheckCircle2 className="w-3 h-3" /> Connected
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-slate-400">
               Active User: <strong className="text-slate-200">{senderName}</strong> &bull; Department: <strong className="text-amber-400">{DEPARTMENT_CONFIG[department].label}</strong>
@@ -854,13 +946,22 @@ export default function Dashboard() {
               <Database className="w-3.5 h-3.5" /> Connect Your Google Drive
             </button>
           ) : (
-            <button
-              onClick={() => handleSyncToSheets(false)}
-              disabled={isSyncing}
-              className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} /> Sync to Your Drive
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => handleSyncToSheets(false)}
+                disabled={isSyncing}
+                className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} /> Sync to Drive
+              </button>
+              <button
+                onClick={handleDisconnectGoogle}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition border border-slate-800"
+                title="Disconnect Google session"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
           )}
         </div>
       </div>
