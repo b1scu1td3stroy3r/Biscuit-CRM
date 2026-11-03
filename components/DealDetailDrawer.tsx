@@ -29,24 +29,30 @@ export default function DealDetailDrawer({
 
     const fetchDetails = async () => {
       try {
-        const allAudits = await db.auditLogs.toArray();
-        const entityId = `Contact_${contact.id}`;
-        const logs = allAudits.filter(
-          (a: any) => a.entityId === entityId || (a.details && a.details.includes(contact.name))
-        );
-        setAuditLogs(logs.reverse());
+        const rawDb = db as any;
+        const auditTable = rawDb.auditLogs || rawDb.audit || rawDb.audit_logs;
+        if (auditTable && typeof auditTable.toArray === 'function') {
+          const allAudits = await auditTable.toArray();
+          const entityId = `Contact_${contact.id}`;
+          const logs = allAudits.filter(
+            (a: any) => a.entityId === entityId || (a.details && a.details.includes(contact.name))
+          );
+          setAuditLogs(logs.reverse());
+        }
       } catch (e) {
-        console.warn('Could not read audit logs:', e);
+        console.warn('Audit logs skipped:', e);
       }
 
       try {
-        const allTasks = await db.projects.toArray();
-        const matchingTasks = allTasks.filter(
-          (t) => t.companyName?.toLowerCase() === contact.company?.toLowerCase()
-        );
-        setRelatedTasks(matchingTasks);
+        if (db.projects && typeof db.projects.toArray === 'function') {
+          const allTasks = await db.projects.toArray();
+          const matchingTasks = allTasks.filter(
+            (t) => t.companyName?.toLowerCase() === contact.company?.toLowerCase()
+          );
+          setRelatedTasks(matchingTasks);
+        }
       } catch (e) {
-        console.warn('Could not read project tasks:', e);
+        console.warn('Projects fetch skipped:', e);
       }
     };
 
