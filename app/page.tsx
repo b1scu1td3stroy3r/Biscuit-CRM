@@ -7,9 +7,9 @@ import {
   RefreshCw, ExternalLink, ChevronRight, ChevronLeft, ArrowRight, LayoutGrid, List, Clock,
   BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, MapPin,
   Cloud, CloudOff, Hash, Users, Download, FileSpreadsheet, AlertTriangle, AlertCircle, Timer,
-  Target, RotateCcw
+  Target, RotateCcw, Laptop, Briefcase, HeartHandshake, Megaphone, Wrench
 } from 'lucide-react';
-import { db, Contact, ProjectTask, StoredTemplate, AuditRecord } from '../packages/storage/src/db';
+import { db, Contact, ProjectTask, StoredTemplate, AuditRecord, DepartmentRole } from '../packages/storage/src/db';
 import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
 import { syncTaskToGoogleCalendar } from '../packages/storage/src/calendarSync';
 import { logAuditEvent } from '../packages/storage/src/auditLogger';
@@ -26,6 +26,14 @@ declare global {
     gapi?: any;
   }
 }
+
+const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; color: string; defaultTab: any }> = {
+  Sales: { label: 'Sales & Commercial', icon: Briefcase, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20', defaultTab: 'kanban' },
+  Operations: { label: 'Operations & Logistics', icon: Wrench, color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20', defaultTab: 'gantt' },
+  HR: { label: 'People & HR', icon: HeartHandshake, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', defaultTab: 'hub' },
+  Marketing: { label: 'Growth & Marketing', icon: Megaphone, color: 'text-purple-400 bg-purple-500/10 border-purple-500/20', defaultTab: 'templates' },
+  IT: { label: 'IT & Infrastructure', icon: Laptop, color: 'text-sky-400 bg-sky-500/10 border-sky-500/20', defaultTab: 'table' },
+};
 
 const PIPELINE_STAGES = [
   { 
@@ -186,6 +194,7 @@ function getMilestoneConfigForStage(stage: StageType, companyOrName: string) {
 }
 
 export default function Dashboard() {
+  const [department, setDepartment] = useState<DepartmentRole>('Sales');
   const [token, setToken] = useState<string | null>(null);
   const [folderId] = useState<string>('1WK1GE6vGTuS1KGCC607Jdkcc6464YaST');
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -284,6 +293,11 @@ export default function Dashboard() {
     setCustomTemplates(storedTpls);
     setAuditLogs(storedAudits);
 
+    const savedDept = localStorage.getItem('biscuit_crm_user_department') as DepartmentRole;
+    if (savedDept && DEPARTMENT_CONFIG[savedDept]) {
+      setDepartment(savedDept);
+    }
+
     const savedSender = localStorage.getItem('biscuit_crm_sender_name');
     if (savedSender) setSenderName(savedSender);
 
@@ -298,6 +312,12 @@ export default function Dashboard() {
 
     const cachedAudit = localStorage.getItem('biscuit_crm_audit_sheet_id');
     if (cachedAudit) setAuditSheetId(cachedAudit);
+  };
+
+  const handleSelectDepartment = (dept: DepartmentRole) => {
+    setDepartment(dept);
+    localStorage.setItem('biscuit_crm_user_department', dept);
+    setViewMode(DEPARTMENT_CONFIG[dept].defaultTab);
   };
 
   const authenticateToken = useCallback((): Promise<string> => {
@@ -381,7 +401,7 @@ export default function Dashboard() {
       accountManager: senderName,
       billingAddress: '',
       shippingAddress: '',
-      stage: presetStage || 'Prospect',
+      stage: presetStage || (department === 'Sales' ? 'Prospect' : 'Lead'),
     });
     setIsModalOpen(true);
   };
@@ -757,16 +777,50 @@ export default function Dashboard() {
   ];
 
   const hasUnsynced = contacts.some(c => !c.synced);
+  const CurrentDeptIcon = DEPARTMENT_CONFIG[department].icon;
 
   return (
-    <main className="max-w-[1500px] mx-auto px-6 py-10">
-      <header className="flex items-center justify-between border-b border-slate-800 pb-6 mb-8">
+    <main className="max-w-[1540px] mx-auto px-6 py-8">
+      {/* Top Header & Department Persona Selector */}
+      <header className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-slate-800 pb-5 mb-6 gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-3">
-            <span>🍪</span> Biscuit CRM
-          </h1>
-          <p className="text-sm text-slate-400 mt-1">Zero-Storage Business Operating System</p>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
+              <span>🍪</span> Biscuit CRM
+            </h1>
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${DEPARTMENT_CONFIG[department].color}`}>
+              <CurrentDeptIcon className="w-3.5 h-3.5" />
+              {DEPARTMENT_CONFIG[department].label}
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mt-0.5">Role-Tailored Zero-Storage Operating System</p>
         </div>
+
+        {/* Department Switcher */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-semibold text-slate-400 mr-1">Switch Persona:</span>
+          {(['Sales', 'Operations', 'HR', 'Marketing', 'IT'] as DepartmentRole[]).map((dept) => {
+            const isSelected = department === dept;
+            const Icon = DEPARTMENT_CONFIG[dept].icon;
+
+            return (
+              <button
+                key={dept}
+                onClick={() => handleSelectDepartment(dept)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+                  isSelected
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow'
+                    : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {dept}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Global Shortcuts */}
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsCommandOpen(true)}
@@ -776,39 +830,6 @@ export default function Dashboard() {
             <span className="hidden sm:inline">Search & Actions</span>
             <kbd className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">⌘K</kbd>
           </button>
-
-          <div className="flex bg-slate-900 border border-slate-800 rounded-lg p-0.5">
-            <button
-              onClick={() => setViewMode('kanban')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 transition ${viewMode === 'kanban' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-            >
-              <LayoutGrid className="w-3.5 h-3.5" /> Pipeline Board
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 transition ${viewMode === 'table' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-            >
-              <List className="w-3.5 h-3.5" /> Table View
-            </button>
-            <button
-              onClick={() => setViewMode('gantt')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 transition ${viewMode === 'gantt' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-            >
-              <CalendarIcon className="w-3.5 h-3.5" /> Gantt & Milestones ({tasks.length})
-            </button>
-            <button
-              onClick={() => setViewMode('templates')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 transition ${viewMode === 'templates' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-            >
-              <BookOpen className="w-3.5 h-3.5" /> Template Vault
-            </button>
-            <button
-              onClick={() => setViewMode('hub')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 transition ${viewMode === 'hub' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-            >
-              <Users className="w-3.5 h-3.5" /> Employee Hub
-            </button>
-          </div>
 
           <button
             onClick={() => setIsHealthOpen(true)}
@@ -820,104 +841,123 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Persistence Banner */}
-      <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 flex items-center justify-between mb-8 shadow-sm">
+      {/* Dynamic View Navigation */}
+      <div className="flex bg-slate-900/90 border border-slate-800 rounded-xl p-1 gap-1 mb-6 shadow-sm overflow-x-auto">
+        <button
+          onClick={() => setViewMode('kanban')}
+          className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'kanban' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+        >
+          <LayoutGrid className="w-3.5 h-3.5" /> Pipeline Board
+          {department === 'Sales' && <span className="text-[10px] bg-slate-950 text-amber-300 px-1.5 py-0.5 rounded ml-1">Primary</span>}
+        </button>
+
+        <button
+          onClick={() => setViewMode('table')}
+          className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'table' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+        >
+          <List className="w-3.5 h-3.5" /> Table View ({contacts.length})
+          {department === 'IT' && <span className="text-[10px] bg-slate-950 text-sky-300 px-1.5 py-0.5 rounded ml-1">Ledger</span>}
+        </button>
+
+        <button
+          onClick={() => setViewMode('gantt')}
+          className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'gantt' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+        >
+          <CalendarIcon className="w-3.5 h-3.5" /> Gantt & Milestones ({tasks.length})
+          {department === 'Operations' && <span className="text-[10px] bg-slate-950 text-indigo-300 px-1.5 py-0.5 rounded ml-1">Operations</span>}
+        </button>
+
+        <button
+          onClick={() => setViewMode('templates')}
+          className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'templates' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+        >
+          <BookOpen className="w-3.5 h-3.5" /> Template Vault
+          {department === 'Marketing' && <span className="text-[10px] bg-slate-950 text-purple-300 px-1.5 py-0.5 rounded ml-1">Battlecards</span>}
+        </button>
+
+        <button
+          onClick={() => setViewMode('hub')}
+          className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'hub' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+        >
+          <Users className="w-3.5 h-3.5" /> Employee Hub & Leave
+          {department === 'HR' && <span className="text-[10px] bg-slate-950 text-emerald-300 px-1.5 py-0.5 rounded ml-1">HR Desk</span>}
+        </button>
+      </div>
+
+      {/* Role-Specific Action Banner */}
+      <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-3">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <CheckCircle2 className="w-5 h-5" />
+          <div className={`p-2 rounded-lg border ${DEPARTMENT_CONFIG[department].color}`}>
+            <CurrentDeptIcon className="w-4 h-4" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-slate-100">Live Workspace Persistence Link</h3>
-              
-              {isSyncing ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
-                  <RefreshCw className="w-3 h-3 animate-spin" /> Auto-syncing to Sheets...
-                </span>
-              ) : !isOnline ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-red-500/10 text-red-400 border border-red-500/30">
-                  <CloudOff className="w-3 h-3" /> Offline (Queued)
-                </span>
-              ) : hasUnsynced ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" /> Outbox Queued
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                  <CheckCircle2 className="w-3 h-3" /> All changes saved
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
-              <FolderCheck className="w-3.5 h-3.5 text-emerald-400" />
-              Drive Root Folder ID: <code className="bg-slate-800 px-1.5 py-0.5 rounded text-slate-300 font-mono text-[11px]">{folderId}</code>
+            <h3 className="text-xs font-semibold text-slate-200">
+              {department === 'Sales' && 'Commercial Funnel Active — Inbound leads, prospect outreach & deal velocity'}
+              {department === 'Operations' && 'Operations Desk — Active SLA fulfillment, supplier delivery windows & calendar sync'}
+              {department === 'HR' && 'People & HR Center — Employee XP progression, deal delegations & 28-day statutory leave tracking'}
+              {department === 'Marketing' && 'Marketing Hub — Outbound battlecard templates, cold email hooks & messaging playbooks'}
+              {department === 'IT' && 'IT Systems & Architecture — Google Drive persistence, Dexie sync mutations & audit logs'}
+            </h3>
+            <p className="text-[11px] text-slate-400">
+              Active User: <span className="text-slate-200 font-semibold">{senderName}</span> &bull; Storage: <span className="text-emerald-400 font-mono">100% Client-Side Local First</span>
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {contacts.length === 0 && (
-            <button
-              onClick={handlePullFromSheets}
-              disabled={isPulling}
-              className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2 rounded-lg text-xs transition shadow-md shadow-emerald-600/20"
-            >
-              <DownloadCloud className={`w-3.5 h-3.5 ${isPulling ? 'animate-spin' : ''}`} />
-              Pull from Sheets
-            </button>
-          )}
-
-          {hasUnsynced && (
-            <button
-              onClick={() => handleSyncToSheets(false)}
-              disabled={isSyncing}
-              className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition"
-              title="Force manual sync now"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-              Force Sync Now
-            </button>
-          )}
-
-          {lastSyncedSheetId && (
-            <a
-              href={`https://docs.google.com/spreadsheets/d/${lastSyncedSheetId}`}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:underline px-2 py-1 bg-emerald-500/5 rounded border border-emerald-500/10"
-            >
-              Open Sheets Master <ExternalLink className="w-3 h-3" />
-            </a>
-          )}
-
-          {auditSheetId && (
-            <a
-              href={`https://docs.google.com/spreadsheets/d/${auditSheetId}`}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-indigo-400 hover:underline px-2 py-1 bg-indigo-500/5 rounded border border-indigo-500/10"
-            >
-              Drive Audit Ledger <ExternalLink className="w-3 h-3" />
-            </a>
-          )}
-
-          <button
-            onClick={() => exportAuditLogsToCSV(auditLogs)}
-            disabled={auditLogs.length === 0}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition"
-            title="Download full compliance audit ledger as CSV"
-          >
-            <Download className="w-3 h-3 text-indigo-400" />
-            Export Audit CSV ({auditLogs.length})
-          </button>
-
-          {(viewMode === 'kanban' || viewMode === 'table') && (
+        {/* Tailored Quick Actions */}
+        <div className="flex items-center gap-2">
+          {department === 'Sales' && (
             <button
               onClick={() => handleOpenAddModal('Prospect')}
-              className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-xs transition shadow-md shadow-amber-500/10"
+              className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-3 py-1.5 rounded-lg text-xs transition"
             >
-              <Plus className="w-3.5 h-3.5" /> Add Customer Account
+              <Plus className="w-3.5 h-3.5" /> New Prospect Account
             </button>
+          )}
+
+          {department === 'Operations' && (
+            <button
+              onClick={() => setIsTaskModalOpen(true)}
+              className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition"
+            >
+              <Plus className="w-3.5 h-3.5" /> Schedule Delivery Milestone
+            </button>
+          )}
+
+          {department === 'Marketing' && (
+            <button
+              onClick={() => setIsNewTemplateModalOpen(true)}
+              className="inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition"
+            >
+              <Plus className="w-3.5 h-3.5" /> Author New Campaign Pitch
+            </button>
+          )}
+
+          {department === 'HR' && (
+            <button
+              onClick={() => setViewMode('hub')}
+              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition"
+            >
+              <HeartHandshake className="w-3.5 h-3.5" /> Review Leave Requests
+            </button>
+          )}
+
+          {department === 'IT' && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleSyncToSheets(false)}
+                disabled={isSyncing}
+                className="inline-flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} /> Flush Outbox to Drive
+              </button>
+              <button
+                onClick={() => exportAuditLogsToCSV(auditLogs)}
+                className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold px-3 py-1.5 rounded-lg text-xs border border-slate-700 transition"
+              >
+                <Download className="w-3.5 h-3.5 text-indigo-400" /> Export Audit Trail
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -1180,7 +1220,7 @@ export default function Dashboard() {
 
           {tasks.length === 0 ? (
             <div className="py-14 text-center text-slate-500 text-sm">
-              No milestones scheduled yet. Advance a deal or schedule milestones.
+              No milestones scheduled yet. Advance a deal or schedule delivery phases.
             </div>
           ) : (
             <div className="space-y-4">
@@ -1230,7 +1270,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5">
                 <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
-                <span className="text-xs text-slate-400">Rep / Sender:</span>
+                <span className="text-xs text-slate-400">Sender:</span>
                 <input
                   type="text"
                   value={senderName}
@@ -1322,7 +1362,7 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Mandatory Deal Regression & Stakeholder Escalation Modal */}
+      {/* Mandatory Deal Regression Modal */}
       {regressingContact && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl">
