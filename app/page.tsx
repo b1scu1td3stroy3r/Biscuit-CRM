@@ -153,6 +153,22 @@ function calculateSLAStatus(contact: Contact): SLAStatus {
   };
 }
 
+
+const stageMatchesCol = (cStage: string, colId: string | number) => {
+  if (!cStage) return String(colId).includes('0');
+  const s = String(cStage).toLowerCase().trim();
+  const cid = String(colId).toLowerCase().trim();
+  if (s === cid) return true;
+  if ((s.includes('cold') || s.includes('prospect')) && cid.includes('cold')) return true;
+  if ((s.includes('inbound') || s.includes('lead')) && cid.includes('inbound')) return true;
+  if ((s.includes('active') || s.includes('sale')) && cid.includes('active')) return true;
+  if (s.includes('procure') && cid.includes('procure')) return true;
+  if ((s.includes('logistic') || s.includes('dispatch')) && cid.includes('logistic')) return true;
+  if ((s.includes('retention') || s.includes('cs')) && cid.includes('retention')) return true;
+  if ((s.includes('win') || s.includes('back')) && cid.includes('win')) return true;
+  return false;
+};
+
 export default function Dashboard() {
   const [department, setDepartment] = useState<DepartmentRole>('MD');
   const [token, setToken] = useState<string | null>(null);
