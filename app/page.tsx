@@ -98,9 +98,9 @@ const PIPELINE_STAGES = [
   { key: 'Lead', label: '1. Inbound Leads', desc: 'Qualified form submissions & warm intros', color: 'border-amber-500/40 text-amber-400 bg-amber-500/10' },
   { key: 'Sales', label: '2. Active Sales', desc: 'Discovery, demos & commercial negotiation', color: 'border-sky-500/40 text-sky-400 bg-sky-500/10' },
   { key: 'Procurement', label: '3. Commercial Review', desc: 'Contract review & pricing sign-off', color: 'border-purple-500/40 text-purple-400 bg-purple-500/10' },
-  { key: 'Logistics', label: '4. Logistics', desc: 'Dispatch SLA & delivery fulfillment', color: 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10' },
-  { key: 'Customer Service', label: '5. Retention / CS', desc: 'Onboarding follow-up & active support', color: 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' },
-  { key: 'Winback', label: '6. Win-Backs', desc: 'Cold deals or inactive > 12 months', color: 'border-rose-500/40 text-rose-400 bg-rose-500/10' },
+  { key: 'Logistics', label: '3. Logistics', desc: 'Dispatch SLA & delivery fulfillment', color: 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10' },
+  { key: 'Customer Service', label: '4. Retention / CS', desc: 'Onboarding follow-up & active support', color: 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' },
+  { key: 'Winback', label: '5. Win-Backs', desc: 'Cold deals or inactive > 12 months', color: 'border-rose-500/40 text-rose-400 bg-rose-500/10' },
 ] as const;
 
 type StageType = typeof PIPELINE_STAGES[number]['key'];
@@ -163,7 +163,7 @@ const stageMatchesCol = (cStage: string, colId: string | number) => {
   if ((s.includes('cold') || s.includes('prospect')) && cid.includes('cold')) return true;
   if ((s.includes('inbound') || s.includes('lead')) && cid.includes('inbound')) return true;
   if ((s.includes('active') || s.includes('sale')) && cid.includes('active')) return true;
-  if (s.includes('procure') && cid.includes('procure')) return true;
+  if (s.includes('procure') && false) return true;
   if ((s.includes('logistic') || s.includes('dispatch')) && cid.includes('logistic')) return true;
   if ((s.includes('retention') || s.includes('cs')) && cid.includes('retention')) return true;
   if ((s.includes('win') || s.includes('back')) && cid.includes('win')) return true;
@@ -530,7 +530,7 @@ export default function Dashboard() {
       defaultStage = 'Prospect';
     } else if (department === 'Marketing') {
       defaultStage = 'Lead';
-    } else if (department === 'Operations') {
+    } else if (department === 'Operations' || (department as string) === 'Procurement') {
       defaultStage = 'Customer Service';
     } else {
       defaultStage = 'Lead';
@@ -747,7 +747,7 @@ export default function Dashboard() {
   const isIT = department === 'IT';
   const isSales = department === 'Sales';
   const isMarketing = department === 'Marketing';
-  const isOperations = department === 'Operations';
+  const isOperations = department === 'Operations' || (department as string) === 'Procurement';
   
   const canAddBusiness = isMD || isSales || isMarketing || isOperations;
   const canViewDriveDetails = isMD || isIT;
