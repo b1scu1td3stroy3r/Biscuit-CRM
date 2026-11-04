@@ -118,6 +118,17 @@ const PIPELINE_STAGES = [
 
 type StageType = typeof PIPELINE_STAGES[number]['key'];
 
+const CS_PIPELINE_STAGES = [
+  { key: 'CS_New', label: '1. New Tickets', desc: 'Inbound tickets & call logs awaiting triage', color: 'border-teal-500/40 text-teal-400 bg-teal-500/10' },
+  { key: 'CS_Ongoing', label: '2. Ongoing Tickets', desc: 'Active investigation & courier liaison', color: 'border-sky-500/40 text-sky-400 bg-sky-500/10' },
+  { key: 'CS_Disputed', label: '3. Disputed Tickets', desc: 'Contested claims & escalations', color: 'border-amber-500/40 text-amber-400 bg-amber-500/10' },
+  { key: 'CS_Resolved', label: '4. Resolved Tickets', desc: 'Satisfied customer solutions & closed cases', color: 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' },
+  { key: 'CS_Replacement', label: '5. Replacement Orders', desc: 'Approved reshipments & replacement items dispatched', color: 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10' },
+  { key: 'CS_Refunds', label: '6. Refunds (Manager Locked)', desc: 'Requires CS Manager sign-off; deducts from daily revenue', color: 'border-rose-500/40 text-rose-400 bg-rose-500/10' },
+  { key: 'CS_Aftercare', label: '7. After Care', desc: 'Courtesy follow-up 7 days post resolution', color: 'border-purple-500/40 text-purple-400 bg-purple-500/10' }
+];
+
+
 interface SLAStatus {
   daysInactive: number;
   level: 'normal' | 'warning' | 'breach';
@@ -529,6 +540,34 @@ export default function Dashboard() {
     }
   };
 
+  
+  // State for Customer Services Refund Approval Modal
+  const [pendingRefundTicket, setPendingRefundTicket] = useState<{ id: string; name: string; amount: number } | null>(null);
+  const [dailyRefundDeduction, setDailyRefundDeduction] = useState<number>(0);
+
+  const handleRequestRefundMove = (ticket: any, targetStage: string) => {
+    if (targetStage === 'CS_Refunds') {
+      const isManager = (department === 'MD') || (currentProfile as any)?.hierarchyTier === 'Manager' || (currentProfile as any)?.hierarchyTier === 'Apex Leader' || (currentProfile as any)?.isManager || (currentProfile as any)?.roleTier === 'Manager';
+      if (!isManager) {
+        alert("⚠️ Permission Denied: Only a Customer Services Manager or Managing Director can authorize moving a ticket into Refunds.");
+        return;
+      }
+      setPendingRefundTicket({
+        id: ticket.id,
+        name: ticket.name || ticket.company,
+        amount: ticket.value || 120.00
+      });
+      return;
+    }
+  };
+
+  const confirmRefundApproval = () => {
+    if (!pendingRefundTicket) return;
+    setDailyRefundDeduction(prev => prev + pendingRefundTicket.amount);
+    alert(`✅ Refund of £${pendingRefundTicket.amount.toFixed(2)} authorized by CS Manager. £${pendingRefundTicket.amount.toFixed(2)} deducted from today's revenue.`);
+    setPendingRefundTicket(null);
+  };
+
   const handleSelectDepartment = (dept: DepartmentRole) => {
     setDepartment(dept);
     localStorage.setItem('biscuit_crm_user_department', dept);
@@ -622,7 +661,9 @@ export default function Dashboard() {
     if (nextStage === 'Customer Service') {
       await db.newsFeed.add({
         title: `Deal Won: ${contact.company || contact.name} onboarded!`,
-        content: `${senderName} closed contract for ${contact.company || contact.name} [${contact.accountNumber}].`,
+        content: `${senderName} closed contract for ${contact.company || contact.name} [${contact.accountNumber}]
+
+.`,
         category: 'Deal Closed',
         department: 'Sales',
         actor: senderName,
@@ -756,7 +797,8 @@ export default function Dashboard() {
   // Resolve visible contacts scoped to active user clearance and org topology
   const scopedContacts = scopeContactsByOrg(contacts, currentProfile, roster, orgStructure);
 
-    const isMD = department === 'MD';
+    const currentPipelineStages = department === 'Customer Services' ? CS_PIPELINE_STAGES : PIPELINE_STAGES;
+  const isMD = department === 'MD';
   const isIT = department === 'IT';
   const isSales = department === 'Sales';
   const isMarketing = department === 'Marketing';
@@ -1217,7 +1259,7 @@ export default function Dashboard() {
       {/* Screen: Pipeline Board */}
       {viewMode === 'kanban' && (isMD || allowedTabs.includes('kanban')) && (
         <section className="grid grid-cols-1 md:grid-cols-7 gap-3 mb-8">
-          {PIPELINE_STAGES.map((col, idx) => {
+          {currentPipelineStages.map((col, idx) => {
             const colContacts = scopedContacts.filter(c => c.stage === col.key);
             const isFirstCol = idx === 0;
             const isLastCol = idx === PIPELINE_STAGES.length - 1;
@@ -1515,7 +1557,7 @@ export default function Dashboard() {
                     onChange={(e) => setNewContact({ ...newContact, stage: e.target.value as any })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-400"
                   >
-                    {PIPELINE_STAGES.map(s => (
+                    {currentPipelineStages.map(s => (
                       <option key={s.key} value={s.key}>{s.label}</option>
                     ))}
                   </select>
