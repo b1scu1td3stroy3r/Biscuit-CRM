@@ -1431,12 +1431,34 @@ export default function Dashboard() {
                         <div className="flex items-center gap-1 pt-1 border-t border-slate-800/60">
                           {!isFirstCol && (
                             <button
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation();
+                                const isManagement = isMD || (currentProfile?.tier && ['Director', 'Executive', 'Leadership', 'Manager'].includes(currentProfile.tier));
+                                if (isManagement) {
+                                  const currentIdx = (PIPELINE_STAGES as unknown as any[]).findIndex((s: any) => s.key === c.stage || s.label === c.stage || s === c.stage);
+                                  if (currentIdx > 0) {
+                                    const prevStageObj: any = PIPELINE_STAGES[currentIdx - 1];
+                                    const prevStage = typeof prevStageObj === 'string' ? prevStageObj : (prevStageObj.key || prevStageObj.label);
+                                    await db.contacts.update(c.id!, { 
+                                      stage: prevStage, 
+                                      updatedAt: new Date().toISOString() 
+                                    });
+                                    setContacts(prev => prev.map(item => item.id === c.id ? { ...item, stage: prevStage } : item));
+                                    await db.auditLogs.add({
+                                      timestamp: new Date().toISOString(),
+                                      actor: senderName,
+                                      action: 'STAGE_REGRESSION_OVERRIDE',
+                                      entityId: `Contact_${c.id}`,
+                                      details: `Management override regressed "${c.name}" from ${c.stage} to ${prevStage}`,
+                                    }).catch(console.warn);
+                                    triggerDebouncedSync();
+                                    return;
+                                  }
+                                }
                                 initiateStageRegression(c);
                               }}
                               className="p-1 text-[10px] bg-slate-800 hover:bg-rose-950/50 hover:text-rose-300 text-slate-400 rounded border border-slate-700/60 transition"
-                              title="Revert stage"
+                              title="Revert stage (Executive / Manager Override Active)"
                             >
                               <ChevronLeft className="w-3 h-3 text-rose-400" />
                             </button>
