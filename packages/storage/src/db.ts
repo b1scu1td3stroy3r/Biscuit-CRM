@@ -36,8 +36,9 @@ export interface EmployeeProfile {
 
 export interface WhiteboardNote {
   id?: number;
+  title?: string;
   author: string;
-  department: DepartmentRole;
+  department?: DepartmentRole;
   content: string;
   createdAt: string;
   color?: string;
