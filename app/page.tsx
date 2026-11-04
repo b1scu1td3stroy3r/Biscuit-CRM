@@ -545,6 +545,57 @@ export default function Dashboard() {
   const [pendingRefundTicket, setPendingRefundTicket] = useState<{ id: string; name: string; amount: number } | null>(null);
   const [dailyRefundDeduction, setDailyRefundDeduction] = useState<number>(0);
 
+  // Live stock allocation state for Sales -> Operations pipeline automation
+  const [warehouseStock, setWarehouseStock] = useState({
+    onHand: 450,
+    reserved: 80,
+    sku: 'BOX-EXP-01'
+  });
+
+  const handleStageTransitionStockHook = (contactId: string | number, fromStage: string, toStage: string) => {
+    // 1. Moving to Active Sales reserves stock units
+    if (toStage === 'Sales' && fromStage !== 'Sales') {
+      setWarehouseStock(prev => ({
+        ...prev,
+        reserved: prev.reserved + 25
+      }));
+    }
+    // 2. Moving to Logistics (Dispatched) deducts physical inventory
+    if (toStage === 'Logistics') {
+      setWarehouseStock(prev => ({
+        ...prev,
+        onHand: Math.max(0, prev.onHand - 25),
+        reserved: Math.max(0, prev.reserved - 25)
+      }));
+    }
+  };
+
+  const handleCreateCSTicket = (ticketData: {
+    customerName: string;
+    company: string;
+    accountRef: string;
+    description: string;
+    priority: "Urgent" | "High" | "Normal";
+    type: string;
+  }) => {
+    const newContactCard: any = {
+      id: `CS-TKT-${Date.now()}`,
+      name: ticketData.customerName,
+      company: ticketData.company,
+      accountRef: ticketData.accountRef,
+      email: `${ticketData.customerName.toLowerCase().replace(' ', '.')}@${ticketData.company.toLowerCase().replace(/[^a-z0-9]/g, '')}.co.uk`,
+      phone: "+44 20 7946 0192",
+      stage: 'CS_New',
+      department: 'Customer Services',
+      assignedTo: currentProfile?.name || 'Managing Director',
+      notes: `[${ticketData.type} - ${ticketData.priority}] ${ticketData.description}`,
+      lastContactDate: new Date().toISOString(),
+      value: 0
+    };
+    setContacts(prev => [newContactCard, ...prev]);
+  };
+
+
   const handleRequestRefundMove = (ticket: any, targetStage: string) => {
     if (targetStage === 'CS_Refunds') {
       const isManager = (department === 'MD') || (currentProfile as any)?.hierarchyTier === 'Manager' || (currentProfile as any)?.hierarchyTier === 'Apex Leader' || (currentProfile as any)?.isManager || (currentProfile as any)?.roleTier === 'Manager';
@@ -641,6 +692,7 @@ export default function Dashboard() {
     if (currentIndex >= PIPELINE_STAGES.length - 1) return;
 
     const nextStage = PIPELINE_STAGES[currentIndex + 1].key;
+    handleStageTransitionStockHook(contact.id, contact.stage, nextStage);
     const now = new Date().toISOString();
 
     await db.contacts.update(contact.id!, {
