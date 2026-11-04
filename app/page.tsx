@@ -165,6 +165,7 @@ export default function Dashboard() {
   const [auditLogs, setAuditLogs] = useState<AuditRecord[]>([]);
   const [currentProfile, setCurrentProfile] = useState<EmployeeProfile | null>(null);
   const [orgStructure, setOrgStructure] = useState<OrgStructureType>('Hierarchical');
+  const [showEmail, setShowEmail] = useState<boolean>(false);
   const [roster, setRoster] = useState<EmployeeProfile[]>([]);
 
   const [isSyncing, setIsSyncing] = useState(false);
@@ -772,13 +773,17 @@ export default function Dashboard() {
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {workspaceConfig?.isPersonalAccount
-              ? `Sole Trader Mode (Personal Google Account: ${workspaceConfig.userEmail})`
-              : workspaceConfig
-              ? `Workspace Organization: ${workspaceConfig.domain}`
-              : 'Local-First Zero-Storage Business Operating System'}
-          </p>
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <span>Sole Trader Mode (Personal Google Account: {showEmail ? (userEmail || 'user@corporate-domain.com') : (userEmail ? userEmail.replace(/(?<=^.).+(?=@)/, m => '•'.repeat(Math.min(m.length, 8))) : '••••••••••••')})</span>
+            <button 
+              type="button"
+              onClick={() => setShowEmail(!showEmail)} 
+              title={showEmail ? "Hide email" : "Show email"}
+              className="text-slate-500 hover:text-slate-300 transition-colors p-0.5 rounded focus:outline-none"
+            >
+              {showEmail ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
         </div>
 
         {/* MD Persona Switcher */}
