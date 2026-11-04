@@ -63,6 +63,13 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
     defaultTab: 'gantt',
     allowedTabs: ['gantt', 'telephony', 'table']
   },
+  Procurement: {
+    label: 'Procurement & Inventory Desk',
+    icon: Building2,
+    color: 'text-indigo-400 border-indigo-500/30 bg-indigo-500/10',
+    defaultTab: 'procurement',
+    allowedTabs: ['procurement', 'table', 'gantt']
+  },
   HR: { 
     label: 'People & HR', 
     icon: HeartHandshake, 
@@ -529,7 +536,7 @@ export default function Dashboard() {
       defaultStage = 'Prospect';
     } else if (department === 'Marketing') {
       defaultStage = 'Lead';
-    } else if (department === 'Operations' || (department as string) === 'Procurement') {
+    } else if (department === 'Operations' || department === 'Procurement') {
       defaultStage = 'Customer Service';
     } else {
       defaultStage = 'Lead';
@@ -746,7 +753,7 @@ export default function Dashboard() {
   const isIT = department === 'IT';
   const isSales = department === 'Sales';
   const isMarketing = department === 'Marketing';
-  const isOperations = department === 'Operations' || (department as string) === 'Procurement';
+  const isOperations = department === 'Operations' || department === 'Procurement';
   
   const canAddBusiness = isMD || isSales || isMarketing || isOperations;
   const canViewDriveDetails = isMD || isIT;
@@ -807,7 +814,7 @@ export default function Dashboard() {
         {isMD ? (
           <div className="flex flex-wrap items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-amber-500/30">
             <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider px-2">MD Console:</span>
-            {(['MD', 'Sales', 'Operations', 'Finance', 'HR', 'Marketing', 'IT'] as DepartmentRole[]).map((dept) => {
+            {(['MD', 'Sales', 'Operations', 'Procurement', 'Finance', 'HR', 'Marketing', 'IT'] as DepartmentRole[]).map((dept) => {
               const isSelected = department === dept;
               const Icon = DEPARTMENT_CONFIG[dept].icon;
 
