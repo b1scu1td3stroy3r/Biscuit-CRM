@@ -1,4 +1,5 @@
 'use client';
+import { canAccessCloudAndDataSettings } from '../lib/cloudGuard';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
@@ -980,7 +981,7 @@ export default function Dashboard() {
             </button>
           )}
 
-          {!token ? (
+          {(isMD || department === "IT") && (!token ? (
             <button
               onClick={() => handleSyncToSheets(false)}
               className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition shadow"
@@ -1004,7 +1005,7 @@ export default function Dashboard() {
                 <LogOut className="w-3.5 h-3.5" />
               </button>
             </div>
-          )}
+          ))}
         </div>
       </div>
 
