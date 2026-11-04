@@ -42,6 +42,7 @@ export interface WhiteboardNote {
   content: string;
   createdAt: string;
   color?: string;
+  [key: string]: any;
 }
 
 export interface LeaveRequest {
@@ -53,10 +54,14 @@ export interface LeaveRequest {
   startDate: string;
   endDate: string;
   days: number;
-  reason: string;
+  reason?: string;
   status: 'Pending' | 'Approved' | 'Declined';
   reviewedBy?: string;
   reviewedAt?: string;
+  notes?: string;
+  calendarEventId?: string;
+  createdAt?: string;
+  [key: string]: any;
 }
 
 export interface CompanySetting {
