@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Wrench, 
   Package, 
@@ -34,7 +34,7 @@ export default function OperationsDesk({
   onAwardXp?: (amount: number, reason: string) => void;
   onDispatchOrder?: (orderId: string) => void;
 }) {
-  const [orders, setOrders] = useState<DispatchOrder[]>([
+  const DEFAULT_DISPATCH_ORDERS: DispatchOrder[] = [
     {
       id: "DSP-1001",
       orderNumber: "ORD-9481",
@@ -59,7 +59,27 @@ export default function OperationsDesk({
       trackingCode: "RM-2094811-GB",
       status: "Packed"
     }
-  ]);
+  ];
+
+  const [orders, setOrders] = useState<DispatchOrder[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("biscuit_crm_dispatch_orders");
+        if (saved) return JSON.parse(saved);
+      } catch (err) {
+        console.warn("Failed to read dispatch orders from localStorage", err);
+      }
+    }
+    return DEFAULT_DISPATCH_ORDERS;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("biscuit_crm_dispatch_orders", JSON.stringify(orders));
+    } catch (err) {
+      console.warn("Failed to persist dispatch orders to localStorage", err);
+    }
+  }, [orders]);
 
   const handleAdvanceStatus = (id: string) => {
     setOrders(prev => prev.map(ord => {
