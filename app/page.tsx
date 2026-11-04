@@ -635,6 +635,8 @@ export default function Dashboard() {
 
   const handleSelectDepartment = (dept: DepartmentRole) => {
     setDepartment(dept);
+    const targetConf = DEPARTMENT_CONFIG[dept === 'Operations & CS' as any ? 'Operations' : dept];
+    if (targetConf) setViewMode(targetConf.defaultTab);
     localStorage.setItem('biscuit_crm_user_department', dept);
     setViewMode(DEPARTMENT_CONFIG[dept].defaultTab);
   };
