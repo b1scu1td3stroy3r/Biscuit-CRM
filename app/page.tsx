@@ -1,4 +1,5 @@
 'use client';
+import ProcurementDesk from '../components/ProcurementDesk';
 import { canAccessCloudAndDataSettings } from '../lib/cloudGuard';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -96,7 +97,7 @@ const PIPELINE_STAGES = [
   { key: 'Prospect', label: '0. Cold Prospects', desc: 'Target list for cold calling (never bought)', color: 'border-slate-500/40 text-slate-300 bg-slate-500/10' },
   { key: 'Lead', label: '1. Inbound Leads', desc: 'Qualified form submissions & warm intros', color: 'border-amber-500/40 text-amber-400 bg-amber-500/10' },
   { key: 'Sales', label: '2. Active Sales', desc: 'Discovery, demos & commercial negotiation', color: 'border-sky-500/40 text-sky-400 bg-sky-500/10' },
-  { key: 'Procurement', label: '3. Procurement', desc: 'Legal agreements & vendor quotes', color: 'border-purple-500/40 text-purple-400 bg-purple-500/10' },
+  { key: 'Procurement', label: '3. Commercial Review', desc: 'Contract review & pricing sign-off', color: 'border-purple-500/40 text-purple-400 bg-purple-500/10' },
   { key: 'Logistics', label: '4. Logistics', desc: 'Dispatch SLA & delivery fulfillment', color: 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10' },
   { key: 'Customer Service', label: '5. Retention / CS', desc: 'Onboarding follow-up & active support', color: 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' },
   { key: 'Winback', label: '6. Win-Backs', desc: 'Cold deals or inactive > 12 months', color: 'border-rose-500/40 text-rose-400 bg-rose-500/10' },
@@ -1061,6 +1062,12 @@ export default function Dashboard() {
           >
             <PoundSterling className="w-3.5 h-3.5 text-emerald-400" /> Finance & Billing Desk
           </button>
+            <button
+              onClick={() => setViewMode('procurement')}
+              className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'procurement' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              <Building className="w-3.5 h-3.5 text-indigo-400" /> Procurement & Vendors
+            </button>
         )}
 
         {(isMD || allowedTabs.includes('table')) && (
@@ -1159,6 +1166,11 @@ export default function Dashboard() {
       )}
 
       {/* Screen: Finance Desk */}
+      {viewMode === 'procurement' && (
+        <div className="mt-4">
+          <ProcurementDesk currentEmployee={currentProfile} />
+        </div>
+      )}
       {viewMode === 'finance' && (isMD || allowedTabs.includes('finance')) && (
         <FinanceDesk
           contacts={contacts}
