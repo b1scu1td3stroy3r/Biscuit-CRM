@@ -156,6 +156,7 @@ export class BiscuitDB extends Dexie {
   employees!: Table<EmployeeProfile, number>;
   outbox!: Table<OutboxItem, number>;
   newsFeed!: Table<NewsItem, number>;
+  leaveRequests!: Table<LeaveRequest, number>;
   holidays!: Table<LeaveRequest, number>;
   callLogs!: Table<CallLog, number>;
   whiteboardNotes!: Table<WhiteboardNote, number>;
@@ -171,6 +172,7 @@ export class BiscuitDB extends Dexie {
       employees: '++id, name, department, status, role, clearanceLevel, primaryManagerId',
       outbox: '++id, type, table, timestamp',
       newsFeed: '++id, category, department, createdAt',
+      leaveRequests: '++id, employeeName, department, status, startDate',
       holidays: '++id, employeeName, department, status, startDate',
       callLogs: '++id, contactId, phoneNumber, callerName, timestamp',
       whiteboardNotes: '++id, author, department, createdAt',
