@@ -86,7 +86,7 @@ export interface Contact {
   shippingAddress?: string;
   stage: 'Prospect' | 'Lead' | 'Sales' | 'Procurement' | 'Logistics' | 'Customer Service' | 'Winback';
   dealValue?: number;
-  invoiceStatus?: 'Draft' | 'Sent' | 'Paid' | 'Overdue';
+  invoiceStatus?: 'Draft' | 'Sent' | 'Issued' | 'Paid' | 'Overdue';
   invoiceNumber?: string;
   invoiceDate?: string;
   paymentMethod?: string;
