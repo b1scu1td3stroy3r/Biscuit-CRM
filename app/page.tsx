@@ -774,7 +774,7 @@ export default function Dashboard() {
             )}
           </div>
           <div className="flex items-center gap-1.5 text-xs text-slate-400">
-            <span>Sole Trader Mode (Personal Google Account: {showEmail ? (userEmail || 'user@corporate-domain.com') : (userEmail ? userEmail.replace(/(?<=^.).+(?=@)/, m => '•'.repeat(Math.min(m.length, 8))) : '••••••••••••')})</span>
+            <span>Sole Trader Mode (Personal Google Account: {showEmail ? (currentProfile?.email || 'user@corporate-domain.com') : (currentProfile?.email ? currentProfile.email.replace(/(?<=^.).+(?=@)/, m => '•'.repeat(Math.min(m.length, 8))) : 't•••••••••••5@gmail.com')})</span>
             <button 
               type="button"
               onClick={() => setShowEmail(!showEmail)} 
