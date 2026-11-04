@@ -1,6 +1,7 @@
 import Dexie, { Table } from 'dexie';
 
 export type DepartmentRole = 'Sales' | 'Operations' | 'Finance' | 'HR' | 'Marketing' | 'IT' | 'MD';
+export type StaffHierarchyTier = 'Staff' | 'Director';
 export type OrgStructureType = 'Linear' | 'Hierarchical' | 'Matrix';
 export type ClearanceLevel = 1 | 2 | 3 | 4 | 5; // 1: IC, 2: Team Lead, 3: Dept Head, 4: Director, 5: Executive/MD
 
@@ -18,7 +19,7 @@ export interface EmployeeProfile {
   email?: string;
   role: string;
   department: DepartmentRole;
-  tier: 'Staff' | 'Director';
+  tier: StaffHierarchyTier;
   status: 'Active' | 'On Leave' | 'Dormant';
   xp: number;
   level: number;
@@ -31,6 +32,29 @@ export interface EmployeeProfile {
   matrixManagerIds?: number[];       // Matrix dotted-line managers
   assignedProjectIds?: string[];     // Matrix project allocations
   customPrivileges?: CustomPrivileges;
+}
+
+export interface WhiteboardNote {
+  id?: number;
+  author: string;
+  department: DepartmentRole;
+  content: string;
+  createdAt: string;
+  color?: string;
+}
+
+export interface LeaveRequest {
+  id?: number;
+  employeeName: string;
+  employeeId?: number;
+  department: DepartmentRole;
+  startDate: string;
+  endDate: string;
+  days: number;
+  reason: string;
+  status: 'Pending' | 'Approved' | 'Declined';
+  reviewedBy?: string;
+  reviewedAt?: string;
 }
 
 export interface CompanySetting {
@@ -110,20 +134,6 @@ export interface NewsItem {
   reactions?: Record<string, number>;
 }
 
-export interface HolidayRequest {
-  id?: number;
-  employeeName: string;
-  employeeId?: number;
-  department: DepartmentRole;
-  startDate: string;
-  endDate: string;
-  days: number;
-  reason: string;
-  status: 'Pending' | 'Approved' | 'Declined';
-  reviewedBy?: string;
-  reviewedAt?: string;
-}
-
 export interface CallLog {
   id?: number;
   contactId: number;
@@ -146,8 +156,9 @@ export class BiscuitDB extends Dexie {
   employees!: Table<EmployeeProfile, number>;
   outbox!: Table<OutboxItem, number>;
   newsFeed!: Table<NewsItem, number>;
-  holidays!: Table<HolidayRequest, number>;
+  holidays!: Table<LeaveRequest, number>;
   callLogs!: Table<CallLog, number>;
+  whiteboardNotes!: Table<WhiteboardNote, number>;
   settings!: Table<CompanySetting, string>;
 
   constructor() {
@@ -162,6 +173,7 @@ export class BiscuitDB extends Dexie {
       newsFeed: '++id, category, department, createdAt',
       holidays: '++id, employeeName, department, status, startDate',
       callLogs: '++id, contactId, phoneNumber, callerName, timestamp',
+      whiteboardNotes: '++id, author, department, createdAt',
       settings: 'key, updatedAt'
     });
   }
