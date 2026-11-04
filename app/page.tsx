@@ -56,12 +56,12 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
     defaultTab: 'kanban',
     allowedTabs: ['kanban', 'telephony', 'templates']
   },
-  Operations: { 
-    label: 'Operations & CS', 
-    icon: Wrench, 
-    color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20', 
+  Operations: {
+    label: 'Operations & CS',
+    icon: Wrench,
+    color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20',
     defaultTab: 'operations',
-    allowedTabs: ['operations', 'kanban', 'table', 'gantt']
+    allowedTabs: ['operations', 'table', 'gantt']
   },
   Procurement: {
     label: 'Procurement & Stock',
