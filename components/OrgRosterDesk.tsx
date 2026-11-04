@@ -87,7 +87,7 @@ export default function OrgRosterDesk({ currentRepName, userRole, contacts, onDa
 
   const handleUpdateEmployee = async (emp: EmployeeProfile) => {
     if (!emp.id) return;
-    await db.employees.update(emp.id, emp);
+    await db.employees.put(emp);
     setSelectedEmployee(emp);
     await loadOrgData();
     onDataChanged();
