@@ -1,5 +1,6 @@
 import Dexie, { Table } from 'dexie';
 
+export type CloudProvider = 'google' | 'microsoft' | 'local';
 export type DepartmentRole = 'Sales' | 'Operations' | 'Finance' | 'HR' | 'Marketing' | 'IT' | 'MD';
 export type StaffHierarchyTier = 'Staff' | 'Team Leader' | 'Manager' | 'Director';
 export type OrgStructureType = 'Linear' | 'Hierarchical' | 'Matrix';
@@ -91,6 +92,10 @@ export interface Contact {
   invoiceDate?: string;
   paymentMethod?: string;
   synced?: boolean;
+  cloudOrigin?: CloudProvider;
+  syncHash?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
   updatedAt?: string;
   internalNotes?: string;
   mailchimpStatus?: 'Synced' | 'Pending' | 'Excluded';
@@ -124,6 +129,10 @@ export interface AuditRecord {
   entityId: string;
   details: string;
   synced?: boolean;
+  cloudOrigin?: CloudProvider;
+  syncHash?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
 }
 
 export interface OutboxItem {
