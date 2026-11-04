@@ -27,6 +27,8 @@ import TelephonyDesk from '../components/TelephonyDesk';
 import MailchimpDesk from '../components/MailchimpDesk';
 import DataImportWizard from '../components/DataImportWizard';
 import DepartmentNewsfeed from '../components/DepartmentNewsfeed';
+import { scopeContactsByOrg } from '../packages/storage/src/orgEngine';
+import { OrgStructureType } from '../packages/storage/src/db';
 
 declare global {
   interface Window {
@@ -162,6 +164,8 @@ export default function Dashboard() {
   const [customTemplates, setCustomTemplates] = useState<StoredTemplate[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditRecord[]>([]);
   const [currentProfile, setCurrentProfile] = useState<EmployeeProfile | null>(null);
+  const [orgStructure, setOrgStructure] = useState<OrgStructureType>('Hierarchical');
+  const [roster, setRoster] = useState<EmployeeProfile[]>([]);
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
@@ -246,6 +250,9 @@ export default function Dashboard() {
     setContacts(contactList);
     setTasks(taskList);
     setCustomTemplates(storedTpls);
+    setRoster(roster);
+    const orgSetting = await db.settings.get('biscuit_org_structure');
+    if (orgSetting?.value) setOrgStructure(orgSetting.value as OrgStructureType);
     setAuditLogs(storedAudits);
 
     let activeUser = roster.find(p => p.name.toLowerCase() === senderName.toLowerCase());
@@ -714,7 +721,10 @@ export default function Dashboard() {
     triggerDebouncedSync();
   };
 
-  const isMD = department === 'MD';
+  // Resolve visible contacts scoped to active user clearance and org topology
+  const scopedContacts = scopeContactsByOrg(contacts, currentProfile, roster, orgStructure);
+
+    const isMD = department === 'MD';
   const isIT = department === 'IT';
   const isSales = department === 'Sales';
   const isMarketing = department === 'Marketing';
@@ -1153,7 +1163,7 @@ export default function Dashboard() {
       {viewMode === 'kanban' && (isMD || allowedTabs.includes('kanban')) && (
         <section className="grid grid-cols-1 md:grid-cols-7 gap-3 mb-8">
           {PIPELINE_STAGES.map((col, idx) => {
-            const colContacts = contacts.filter(c => c.stage === col.key);
+            const colContacts = scopedContacts.filter(c => c.stage === col.key);
             const isFirstCol = idx === 0;
             const isLastCol = idx === PIPELINE_STAGES.length - 1;
 
