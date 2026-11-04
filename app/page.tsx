@@ -97,7 +97,6 @@ const PIPELINE_STAGES = [
   { key: 'Prospect', label: '0. Cold Prospects', desc: 'Target list for cold calling (never bought)', color: 'border-slate-500/40 text-slate-300 bg-slate-500/10' },
   { key: 'Lead', label: '1. Inbound Leads', desc: 'Qualified form submissions & warm intros', color: 'border-amber-500/40 text-amber-400 bg-amber-500/10' },
   { key: 'Sales', label: '2. Active Sales', desc: 'Discovery, demos & commercial negotiation', color: 'border-sky-500/40 text-sky-400 bg-sky-500/10' },
-  { key: 'Procurement', label: '3. Commercial Review', desc: 'Contract review & pricing sign-off', color: 'border-purple-500/40 text-purple-400 bg-purple-500/10' },
   { key: 'Logistics', label: '3. Logistics', desc: 'Dispatch SLA & delivery fulfillment', color: 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10' },
   { key: 'Customer Service', label: '4. Retention / CS', desc: 'Onboarding follow-up & active support', color: 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' },
   { key: 'Winback', label: '5. Win-Backs', desc: 'Cold deals or inactive > 12 months', color: 'border-rose-500/40 text-rose-400 bg-rose-500/10' },
