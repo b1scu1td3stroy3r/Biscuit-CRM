@@ -39,7 +39,7 @@ declare global {
   }
 }
 
-type ViewTabType = 'kanban' | 'table' | 'gantt' | 'templates' | 'hub' | 'finance' | 'roster' | 'telephony' | 'mailchimp' | 'import' | 'procurement' | 'customer-services';
+type ViewTabType = 'kanban' | 'table' | 'gantt' | 'templates' | 'hub' | 'finance' | 'roster' | 'telephony' | 'mailchimp' | 'import' | 'procurement' | 'customer-services' | 'operations';
 
 const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; color: string; defaultTab: ViewTabType; allowedTabs: ViewTabType[] }> = {
   MD: { 
@@ -60,8 +60,8 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
     label: 'Operations & CS', 
     icon: Wrench, 
     color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20', 
-    defaultTab: 'gantt',
-    allowedTabs: ['gantt', 'telephony', 'table']
+    defaultTab: 'operations',
+    allowedTabs: ['operations', 'kanban', 'table', 'gantt']
   },
   Procurement: {
     label: 'Procurement & Stock',
@@ -544,6 +544,19 @@ export default function Dashboard() {
   // State for Customer Services Refund Approval Modal
   const [pendingRefundTicket, setPendingRefundTicket] = useState<{ id: string; name: string; amount: number } | null>(null);
   const [dailyRefundDeduction, setDailyRefundDeduction] = useState<number>(0);
+
+  // CS Ticket Drawer & SLA Helpers
+  const [selectedTicketDetail, setSelectedTicketDetail] = useState<any | null>(null);
+
+  const calculateSlaAging = (dateString?: string) => {
+    if (!dateString) return { text: '< 30m', level: 'safe' };
+    const diffMs = Date.now() - new Date(dateString).getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+    if (diffHours >= 4) return { text: `${diffHours.toFixed(1)}h (SLA Breach)`, level: 'breach' };
+    if (diffHours >= 1) return { text: `${diffHours.toFixed(1)}h (Attention)`, level: 'warn' };
+    return { text: `${Math.max(1, Math.round(diffHours * 60))}m`, level: 'safe' };
+  };
+
 
   // Live stock allocation state for Sales -> Operations pipeline automation
   const [warehouseStock, setWarehouseStock] = useState({
@@ -1184,6 +1197,16 @@ export default function Dashboard() {
           >
             <Headphones className="w-3.5 h-3.5 text-teal-400" /> CS Support & Telephony
           </button>
+          <button
+            onClick={() => setViewMode('operations' as any)}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${
+              viewMode === ('operations' as any)
+                ? 'bg-amber-500 text-slate-950 font-bold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Wrench className="w-3.5 h-3.5 text-purple-400" /> Operations & Dispatch
+          </button>
             </>
           )}
 
@@ -1425,6 +1448,60 @@ export default function Dashboard() {
             );
           })}
         </section>
+      )}
+
+
+      {/* Customer Services Ticket Detail Drawer */}
+      {selectedTicketDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl p-6 shadow-2xl space-y-5">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-4">
+              <div>
+                <span className="text-[10px] font-mono uppercase bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded font-bold">
+                  {selectedTicketDetail.stage || 'Active Ticket'}
+                </span>
+                <h3 className="text-lg font-bold text-white mt-1">{selectedTicketDetail.name}</h3>
+                <p className="text-xs text-slate-400">{selectedTicketDetail.company} • {selectedTicketDetail.accountRef || 'ACC-REF'}</p>
+              </div>
+              <button
+                onClick={() => setSelectedTicketDetail(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800">
+                <span className="text-slate-500 block">Phone & Direct Dial</span>
+                <span className="font-mono text-indigo-300 font-semibold">{selectedTicketDetail.phone || 'N/A'}</span>
+              </div>
+              <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800">
+                <span className="text-slate-500 block">Email Address</span>
+                <span className="font-mono text-teal-300 font-semibold truncate block">{selectedTicketDetail.email || 'N/A'}</span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-300">Case Investigation Notes</label>
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 font-mono leading-relaxed min-h-[90px]">
+                {selectedTicketDetail.notes || 'No case logs recorded.'}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-xs text-slate-500">
+                Assigned: <strong className="text-slate-300">{selectedTicketDetail.assignedTo || 'Managing Director'}</strong>
+              </span>
+              <button
+                onClick={() => setSelectedTicketDetail(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold transition"
+              >
+                Close Drawer
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Screen: Table View */}
