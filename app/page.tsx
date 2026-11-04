@@ -4,7 +4,7 @@ import { canAccessCloudAndDataSettings } from '../lib/cloudGuard';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
-  ShieldCheck, Zap, Database, Building2, Calendar as CalendarIcon, 
+  ShieldCheck, Zap, Database, Building2, Headphones, Calendar as CalendarIcon, 
   FileText, CheckCircle2, Loader2, FolderCheck, Plus, Search, 
   RefreshCw, ExternalLink, ChevronRight, ChevronLeft, ArrowRight, LayoutGrid, List, Clock,
   BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, EyeOff, MapPin,
@@ -64,11 +64,18 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
     allowedTabs: ['gantt', 'telephony', 'table']
   },
   Procurement: {
-    label: 'Procurement & Inventory Desk',
+    label: 'Procurement & Stock',
     icon: Building2,
     color: 'text-indigo-400 border-indigo-500/30 bg-indigo-500/10',
     defaultTab: 'procurement',
     allowedTabs: ['procurement', 'table', 'gantt']
+  },
+  'Customer Services': {
+    label: 'Customer Services & Support',
+    icon: Headphones,
+    color: 'text-teal-400 border-teal-500/30 bg-teal-500/10',
+    defaultTab: 'kanban',
+    allowedTabs: ['kanban', 'table', 'telephony']
   },
   HR: { 
     label: 'People & HR', 
@@ -812,28 +819,26 @@ export default function Dashboard() {
 
         {/* MD Persona Switcher */}
         {isMD ? (
-          <div className="flex flex-wrap items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-amber-500/30">
-            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider px-2">MD Console:</span>
-            {(['MD', 'Sales', 'Operations', 'Procurement', 'Finance', 'HR', 'Marketing', 'IT'] as DepartmentRole[]).map((dept) => {
-              const isSelected = department === dept;
-              const Icon = DEPARTMENT_CONFIG[dept].icon;
-
-              return (
-                <button
-                  key={dept}
-                  onClick={() => handleSelectDepartment(dept)}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
-                    isSelected
-                      ? 'bg-amber-500 text-slate-950 font-bold shadow'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-                  }`}
-                >
-                  <Icon className="w-3 h-3" />
-                  {dept}
-                </button>
-              );
-            })}
-          </div>
+          <div className="flex items-center gap-2 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-amber-500/40 shadow-inner">
+              <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Crown className="w-3.5 h-3.5 text-amber-400" /> MD Console:
+              </span>
+              <select
+                value={department}
+                onChange={(e) => handleSelectDepartment(e.target.value as DepartmentRole)}
+                className="bg-slate-950 text-amber-300 font-semibold text-xs border border-amber-500/30 rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-400 cursor-pointer"
+              >
+                <option value="MD">👑 MD (Executive All-Access)</option>
+                <option value="Sales">💼 Sales Division</option>
+                <option value="Operations">🔧 Operations & Dispatch</option>
+                <option value="Procurement">🏢 Procurement & Stock Intake</option>
+                <option value="Customer Services">🎧 Customer Services & Support</option>
+                <option value="Finance">£ Finance & Billing</option>
+                <option value="HR">🤍 HR & People</option>
+                <option value="Marketing">📢 Marketing & Outreach</option>
+                <option value="IT">💻 IT & Systems</option>
+              </select>
+            </div>
         ) : (
           <div className="flex items-center gap-2">
             <button
