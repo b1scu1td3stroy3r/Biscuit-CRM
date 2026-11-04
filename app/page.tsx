@@ -377,6 +377,7 @@ export default function Dashboard() {
   const handleDisconnectGoogle = () => {
     localStorage.removeItem('biscuit_crm_google_token');
     localStorage.removeItem('biscuit_crm_google_token_exp');
+    localStorage.removeItem('biscuit_crm_google_refresh_token');
     setToken(null);
   };
 
