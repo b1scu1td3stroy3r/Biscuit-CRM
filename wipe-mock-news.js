@@ -1,0 +1,1 @@
+const Dexie = require('dexie');
