@@ -49,6 +49,7 @@ export interface LeaveRequest {
   employeeName: string;
   employeeId?: number;
   department: DepartmentRole;
+  leaveType?: string;
   startDate: string;
   endDate: string;
   days: number;
