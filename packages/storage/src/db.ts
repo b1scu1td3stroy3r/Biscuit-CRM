@@ -1,7 +1,7 @@
 import Dexie, { Table } from 'dexie';
 
 export type DepartmentRole = 'Sales' | 'Operations' | 'Finance' | 'HR' | 'Marketing' | 'IT' | 'MD';
-export type StaffHierarchyTier = 'Staff' | 'Director';
+export type StaffHierarchyTier = 'Staff' | 'Team Leader' | 'Director';
 export type OrgStructureType = 'Linear' | 'Hierarchical' | 'Matrix';
 export type ClearanceLevel = 1 | 2 | 3 | 4 | 5; // 1: IC, 2: Team Lead, 3: Dept Head, 4: Director, 5: Executive/MD
 
