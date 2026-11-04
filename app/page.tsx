@@ -58,7 +58,7 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
     allowedTabs: ['kanban', 'telephony', 'templates']
   },
   Operations: {
-    label: 'Operations & CS',
+    label: 'Operations & Dispatch',
     icon: Wrench,
     color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20',
     defaultTab: 'operations',
@@ -635,7 +635,7 @@ export default function Dashboard() {
 
   const handleSelectDepartment = (dept: DepartmentRole) => {
     setDepartment(dept);
-    const targetConf = DEPARTMENT_CONFIG[dept === 'Operations & CS' as any ? 'Operations' : dept];
+    const targetConf = DEPARTMENT_CONFIG[dept === 'Operations & Dispatch' as any ? 'Operations' : dept];
     if (targetConf) setViewMode(targetConf.defaultTab);
     localStorage.setItem('biscuit_crm_user_department', dept);
     setViewMode(DEPARTMENT_CONFIG[dept].defaultTab);
