@@ -344,8 +344,9 @@ export default function Dashboard() {
         });
       }
 
+      const storedEmail = localStorage.getItem('biscuit_crm_user_email');
       if (!interactive) {
-        tokenClientRef.current.requestAccessToken({ prompt: 'none' });
+        tokenClientRef.current.requestAccessToken({ prompt: '', hint: storedEmail || undefined });
       } else {
         tokenClientRef.current.requestAccessToken();
       }
