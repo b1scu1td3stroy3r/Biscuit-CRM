@@ -31,6 +31,26 @@ export default function FinanceDesk({ contacts, onContactUpdated, currentUser }:
   const [isCharging, setIsCharging] = useState(false);
   const [chargeError, setChargeError] = useState<string | null>(null);
   const [chargeSuccess, setChargeSuccess] = useState(false);
+  const [totalShippingDeduction, setTotalShippingDeduction] = useState<number>(0);
+
+  const calculateShippingDeduction = () => {
+    if (typeof window !== "undefined") {
+      try {
+        const savedCosts = JSON.parse(localStorage.getItem("biscuit_crm_daily_shipping_costs") || "[]");
+        const total = savedCosts.reduce((acc: number, item: any) => acc + (Number(item.amount) || 0), 0);
+        setTotalShippingDeduction(total);
+      } catch (err) {
+        console.warn("Failed to read shipping costs from localStorage", err);
+      }
+    }
+  };
+
+  useEffect(() => {
+    calculateShippingDeduction();
+    const handleFeeUpdate = () => calculateShippingDeduction();
+    window.addEventListener("shipping_fee_updated", handleFeeUpdate);
+    return () => window.removeEventListener("shipping_fee_updated", handleFeeUpdate);
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem('biscuit_crm_stripe_secret_key');
@@ -190,9 +210,10 @@ export default function FinanceDesk({ contacts, onContactUpdated, currentUser }:
   };
 
   const totalPipelineValue = contacts.reduce((sum, c) => sum + (Number(c.dealValue) || 0), 0);
-  const totalSettled = contacts
+  const grossSettled = contacts
     .filter(c => c.invoiceStatus === 'Paid')
     .reduce((sum, c) => sum + (Number(c.dealValue) || 0), 0);
+  const netSettledRevenue = Math.max(0, grossSettled - totalShippingDeduction);
 
   return (
     <div className="space-y-6">
@@ -245,13 +266,13 @@ export default function FinanceDesk({ contacts, onContactUpdated, currentUser }:
 
         <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
           <span className="text-xs text-slate-400 block mb-1">Paid & Settled Revenue</span>
-          <div className="text-xl font-bold font-mono text-emerald-400">£{totalSettled.toLocaleString()}</div>
+          <div className="text-xl font-bold font-mono text-emerald-400">£{netSettledRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           <span className="text-[10px] text-emerald-500/80">Funds captured via Card, BACS, or Bank</span>
         </div>
 
         <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
           <span className="text-xs text-slate-400 block mb-1">Pending Invoice Collection</span>
-          <div className="text-xl font-bold font-mono text-amber-400">£{(totalPipelineValue - totalSettled).toLocaleString()}</div>
+          <div className="text-xl font-bold font-mono text-amber-400">£{(totalPipelineValue - netSettledRevenue).toLocaleString()}</div>
           <span className="text-[10px] text-amber-500/80">Awaiting payment link settlement</span>
         </div>
       </div>
