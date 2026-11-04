@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  Users, UserCheck, UserX, ShieldAlert, Award, ArrowRightLeft, 
-  CheckCircle2, Plus, Edit2, Shuffle, AlertTriangle, Crown, Sparkles, Check, X
+  Users, UserPlus, Shield, Crown, Laptop, Briefcase, HeartHandshake, 
+  Megaphone, Wrench, PoundSterling, Shuffle, ArrowRight, CheckCircle2,
+  AlertTriangle, GitFork, Network, Layers, ChevronRight, Check
 } from 'lucide-react';
-import { db, EmployeeProfile, DepartmentRole, StaffHierarchyTier, Contact, LeaveRequest } from '../packages/storage/src/db';
+import { db, EmployeeProfile, DepartmentRole, OrgStructureType, ClearanceLevel, Contact } from '../packages/storage/src/db';
+import { CLEARANCE_LABELS } from '../packages/storage/src/orgEngine';
 
 interface OrgRosterDeskProps {
   currentRepName: string;
@@ -14,482 +16,438 @@ interface OrgRosterDeskProps {
   onDataChanged: () => void;
 }
 
-export function getRankDetails(emp: { tier: StaffHierarchyTier; level: number; xp: number }) {
-  const isLeaderOrAbove = emp.tier !== 'Staff';
-
-  if (isLeaderOrAbove) {
-    // 5-Level Leadership Hierarchy
-    const lvl = Math.min(5, Math.max(1, emp.level || 1));
-    const titles = [
-      'Frontline Lead',
-      'Operations Captain',
-      'Department Head',
-      'Executive Champion',
-      'Grandmaster Director'
-    ];
-    return {
-      title: titles[lvl - 1],
-      maxLevels: 5,
-      isLeadership: true,
-      badge: 'border-purple-500/30 text-purple-300 bg-purple-500/10'
-    };
-  }
-
-  // 10-Level Staff System
-  const lvl = Math.min(10, Math.max(1, emp.level || 1));
-  const staffTitles = [
-    'Apprentice Associate',
-    'Junior Specialist',
-    'Core Practitioner',
-    'Advanced Operator',
-    'Senior Specialist',
-    'Staff Anchor',
-    'Master Practitioner',
-    'Department Vanguard',
-    'Principal Specialist',
-    'Apex Elite'
-  ];
-  return {
-    title: staffTitles[lvl - 1],
-    maxLevels: 10,
-    isLeadership: false,
-    badge: 'border-amber-500/30 text-amber-300 bg-amber-500/10'
-  };
-}
-
 export default function OrgRosterDesk({ currentRepName, userRole, contacts, onDataChanged }: OrgRosterDeskProps) {
-  const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
-  const [editingEmp, setEditingEmp] = useState<EmployeeProfile | null>(null);
-  const [targetDormant, setTargetDormant] = useState<EmployeeProfile | null>(null);
-  const [redistributionSummary, setRedistributionSummary] = useState<string | null>(null);
+  const [roster, setRoster] = useState<EmployeeProfile[]>([]);
+  const [orgStructure, setOrgStructure] = useState<OrgStructureType>('Hierarchical');
+  const [selectedEmployee, setSelectedEmployee] = useState<EmployeeProfile | null>(null);
 
-  const [newEmpForm, setNewEmpForm] = useState({
+  // Modal / Form state for new hire
+  const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [newHire, setNewHire] = useState({
     name: '',
-    role: 'Specialist',
+    email: '',
+    role: 'Commercial Account Executive',
     department: 'Sales' as DepartmentRole,
-    tier: 'Staff' as StaffHierarchyTier,
+    tier: 'Staff' as 'Staff' | 'Director',
+    clearanceLevel: 1 as ClearanceLevel,
+    primaryManagerId: undefined as number | undefined,
   });
 
-  const loadRoster = async () => {
-    let list = await db.employees.toArray();
-    if (list.length === 0) {
-      const initialSeed: EmployeeProfile[] = [
-        { name: 'Sarah Jenkins', role: 'Sales Lead', department: 'Sales', tier: 'Team Leader', status: 'Active', xp: 685, level: 3, dealsClosed: 4, handoverActive: false },
-        { name: 'David Miller', role: 'Commercial Executive', department: 'Sales', tier: 'Staff', status: 'Active', xp: 420, level: 3, dealsClosed: 2, handoverActive: false },
-        { name: 'Liam Hughes', role: 'Operations Lead', department: 'Operations', tier: 'Manager', status: 'Active', xp: 810, level: 4, dealsClosed: 0, handoverActive: false },
-        { name: 'Elena Rostova', role: 'Billing Specialist', department: 'Finance', tier: 'Staff', status: 'Active', xp: 350, level: 2, dealsClosed: 0, handoverActive: false },
-        { name: 'Marcus Vance', role: 'Managing Director', department: 'MD', tier: 'Director', status: 'Active', xp: 1250, level: 5, dealsClosed: 12, handoverActive: false },
-      ];
-      for (const emp of initialSeed) {
-        await db.employees.add(emp);
-      }
-      list = await db.employees.toArray();
+  const loadOrgData = async () => {
+    const list = await db.employees.toArray();
+    setRoster(list);
+
+    const setting = await db.settings.get('biscuit_org_structure');
+    if (setting?.value) {
+      setOrgStructure(setting.value as OrgStructureType);
     }
-    setEmployees(list);
   };
 
   useEffect(() => {
-    loadRoster();
+    loadOrgData();
   }, []);
+
+  const handleUpdateStructure = async (structure: OrgStructureType) => {
+    setOrgStructure(structure);
+    await db.settings.put({
+      key: 'biscuit_org_structure',
+      value: structure,
+      updatedAt: new Date().toISOString(),
+    });
+    onDataChanged();
+  };
 
   const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEmpForm.name) return;
+    if (!newHire.name.trim()) return;
 
     await db.employees.add({
-      name: newEmpForm.name,
-      role: newEmpForm.role,
-      department: newEmpForm.department,
-      tier: newEmpForm.tier,
+      ...newHire,
       status: 'Active',
       xp: 100,
       level: 1,
       dealsClosed: 0,
       handoverActive: false,
+      matrixManagerIds: [],
     });
 
-    setNewEmpForm({ name: '', role: 'Specialist', department: 'Sales', tier: 'Staff' });
-    await loadRoster();
+    setIsNewModalOpen(false);
+    setNewHire({
+      name: '',
+      email: '',
+      role: 'Commercial Account Executive',
+      department: 'Sales',
+      tier: 'Staff',
+      clearanceLevel: 1,
+      primaryManagerId: undefined,
+    });
+    await loadOrgData();
     onDataChanged();
   };
 
-  const handleUpdateEmployee = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingEmp || !editingEmp.id) return;
-
-    // Recompute level based on updated tier
-    const isLeadership = editingEmp.tier !== 'Staff';
-    const computedLevel = isLeadership
-      ? Math.min(5, Math.floor(editingEmp.xp / 250) + 1)
-      : Math.min(10, Math.floor(editingEmp.xp / 200) + 1);
-
-    await db.employees.update(editingEmp.id, {
-      role: editingEmp.role,
-      department: editingEmp.department,
-      tier: editingEmp.tier,
-      status: editingEmp.status,
-      level: computedLevel,
-    });
-
-    setEditingEmp(null);
-    await loadRoster();
+  const handleUpdateEmployee = async (emp: EmployeeProfile) => {
+    if (!emp.id) return;
+    await db.employees.update(emp.id, emp);
+    setSelectedEmployee(emp);
+    await loadOrgData();
     onDataChanged();
   };
 
-  const handleConfirmDormancy = async () => {
-    if (!targetDormant || !targetDormant.id) return;
-
-    await db.employees.update(targetDormant.id, {
-      status: 'Dormant',
-    });
-
-    const colleagues = employees.filter(
-      (e) => e.id !== targetDormant.id && e.department === targetDormant.department && e.status === 'Active'
-    );
-
-    const assignedDeals = contacts.filter(
-      (c) => c.accountManager && c.accountManager.toLowerCase().includes(targetDormant.name.toLowerCase())
-    );
-
-    let reallocatedCount = 0;
-    const summaryLog: string[] = [];
-
-    if (colleagues.length > 0 && assignedDeals.length > 0) {
-      for (const deal of assignedDeals) {
-        const randomIndex = Math.floor(Math.random() * colleagues.length);
-        const recipient = colleagues[randomIndex];
-
-        const noteUpdate = `${deal.internalNotes || ''}\n[REALLOCATION]: Staff member ${targetDormant.name} marked Dormant. Workload distributed to ${recipient.name} at random.`;
-
-        await db.contacts.update(deal.id!, {
-          accountManager: recipient.name,
-          internalNotes: noteUpdate,
-          synced: false,
-          updatedAt: new Date().toISOString(),
-        });
-
-        await db.outbox.add({
-          type: 'UPDATE',
-          table: 'contacts',
-          payload: {
-            id: deal.id,
-            accountManager: recipient.name,
-            internalNotes: noteUpdate,
-            updatedAt: new Date().toISOString(),
-          },
-          timestamp: Date.now(),
-        });
-
-        // Award peer +25 XP
-        const step = recipient.tier === 'Staff' ? 200 : 250;
-        const maxLvl = recipient.tier === 'Staff' ? 10 : 5;
-        const newXP = recipient.xp + 25;
-        const newLvl = Math.min(maxLvl, Math.floor(newXP / step) + 1);
-
-        await db.employees.update(recipient.id!, {
-          xp: newXP,
-          level: newLvl,
-        });
-
-        reallocatedCount++;
-        summaryLog.push(`• ${deal.name} [${deal.accountNumber}] -> Assigned to ${recipient.name} (+25 XP)`);
-      }
-    }
-
-    setRedistributionSummary(
-      reallocatedCount > 0
-        ? `Marked ${targetDormant.name} as Dormant. ${reallocatedCount} accounts re-allocated randomly across ${colleagues.length} ${targetDormant.department} peers:\n\n${summaryLog.join('\n')}`
-        : `Marked ${targetDormant.name} as Dormant. No accounts required re-distribution.`
-    );
-
-    setTargetDormant(null);
-    await loadRoster();
-    onDataChanged();
-  };
+  const potentialManagers = roster.filter(e => (e.clearanceLevel || 1) >= 2);
 
   return (
-    <section className="space-y-6 mb-8">
-      <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+    <div className="space-y-6">
+      {/* Top Banner & Structure Selector */}
+      <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <h2 className="font-bold text-slate-100 text-base flex items-center gap-2">
-            <Users className="w-5 h-5 text-sky-400" /> Organization Roster, Role Assignment & Workload Offboarding
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            10-level XP ladder for staff &bull; 5-level tier for leaders/managers &bull; Random workload re-allocation on dormancy
+          <div className="flex items-center gap-2">
+            <Network className="w-5 h-5 text-sky-400" />
+            <h2 className="text-base font-bold text-slate-100">Enterprise Organizational Topology & RBAC</h2>
+          </div>
+          <p className="text-xs text-slate-400 mt-1">
+            Configure how authority, pipeline visibility, and performance rollups cascade across the company.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-mono bg-sky-500/10 text-sky-400 border border-sky-500/20 px-3 py-1 rounded-full">
-            {employees.filter(e => e.status === 'Active').length} Active Personnel
-          </span>
-          <span className="text-xs font-mono bg-slate-800 text-slate-400 px-3 py-1 rounded-full">
-            {employees.filter(e => e.status === 'Dormant').length} Dormant
-          </span>
+        {/* Structure Selector Buttons */}
+        <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+          <button
+            onClick={() => handleUpdateStructure('Linear')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              orgStructure === 'Linear'
+                ? 'bg-sky-500 text-slate-950 shadow font-bold'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" /> Linear (Flat)
+          </button>
+          <button
+            onClick={() => handleUpdateStructure('Hierarchical')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              orgStructure === 'Hierarchical'
+                ? 'bg-amber-500 text-slate-950 shadow font-bold'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+            }`}
+          >
+            <GitFork className="w-3.5 h-3.5" /> Hierarchical
+          </button>
+          <button
+            onClick={() => handleUpdateStructure('Matrix')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              orgStructure === 'Matrix'
+                ? 'bg-purple-500 text-slate-950 shadow font-bold'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+            }`}
+          >
+            <Network className="w-3.5 h-3.5" /> Matrix
+          </button>
         </div>
       </div>
 
-      {redistributionSummary && (
-        <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-200 space-y-2">
-          <div className="flex items-center justify-between font-bold text-emerald-400">
-            <span className="flex items-center gap-2"><Shuffle className="w-4 h-4" /> Workload Redistribution Audit Complete</span>
-            <button onClick={() => setRedistributionSummary(null)} className="text-slate-400 hover:text-slate-200">✕</button>
-          </div>
-          <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-slate-300">
-            {redistributionSummary}
-          </pre>
+      {/* Structure Mode Description Banner */}
+      <div className="px-4 py-3 rounded-xl bg-slate-950 border border-slate-800/80 text-xs text-slate-400 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span>
+            Active Topology: <strong className="text-slate-200">{orgStructure} Model</strong>.
+            {orgStructure === 'Linear' && ' Department leads view all department deals; individual reps view only their assigned deals.'}
+            {orgStructure === 'Hierarchical' && ' Authority cascades down parent-child reporting trees. Managers see their entire subordinate tree.'}
+            {orgStructure === 'Matrix' && ' Dual reporting enabled. Functional Heads and Dotted-Line Project Leads share joint visibility.'}
+          </span>
         </div>
-      )}
+        <button
+          onClick={() => setIsNewModalOpen(true)}
+          className="inline-flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-3 py-1.5 rounded-lg font-bold text-xs transition"
+        >
+          <UserPlus className="w-3.5 h-3.5" /> Add Staff Member
+        </button>
+      </div>
 
-      {/* Target Dormant Confirmation Modal */}
-      {targetDormant && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
-            <div className="flex items-center gap-3 text-rose-400">
-              <AlertTriangle className="w-6 h-6" />
-              <h3 className="font-bold text-base text-slate-100">Offboard & Set Dormant</h3>
-            </div>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Are you sure you want to mark <strong>{targetDormant.name}</strong> as Dormant? Their open deals will be automatically and randomly distributed to active colleagues in the <strong>{targetDormant.department}</strong> department.
-            </p>
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-              <button
-                onClick={() => setTargetDormant(null)}
-                className="px-4 py-1.5 text-xs text-slate-400 hover:text-slate-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmDormancy}
-                className="bg-rose-600 hover:bg-rose-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs transition"
-              >
-                Confirm Offboarding & Redistribute
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* Main Roster Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 rounded-2xl border border-slate-800 bg-slate-900/40 overflow-hidden shadow-sm">
-          <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-            <h3 className="font-semibold text-slate-200 text-sm">Personnel Directory</h3>
-            <span className="text-xs text-slate-400">5-Lvl Leaders &bull; 10-Lvl Staff</span>
-          </div>
+        {/* Left 2 Cols: Employee Roster */}
+        <div className="lg:col-span-2 space-y-3">
+          {roster.map((emp) => {
+            const clearance = CLEARANCE_LABELS[emp.clearanceLevel || 1];
+            const primaryManager = roster.find(m => m.id === emp.primaryManagerId);
+            const isSelected = selectedEmployee?.id === emp.id;
 
-          <table className="w-full text-left text-sm text-slate-300">
-            <thead className="bg-slate-900/80 text-xs uppercase text-slate-400 border-b border-slate-800">
-              <tr>
-                <th className="px-5 py-3">Staff Member</th>
-                <th className="px-5 py-3">Department</th>
-                <th className="px-5 py-3">Hierarchy Tier</th>
-                <th className="px-5 py-3">Progression Rank</th>
-                <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">
-              {employees.map((emp) => {
-                const rank = getRankDetails(emp);
-                return (
-                  <tr key={emp.id} className="hover:bg-slate-800/30 transition">
-                    <td className="px-5 py-3.5">
-                      <div className="font-semibold text-slate-100 flex items-center gap-1.5">
-                        <span>{emp.name}</span>
-                        {emp.tier === 'Director' && <Crown className="w-3.5 h-3.5 text-amber-400" />}
-                      </div>
-                      <div className="text-[11px] text-slate-400">{emp.role}</div>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <span className="text-xs font-medium text-slate-300">{emp.department}</span>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
-                        emp.tier === 'Director' ? 'border-amber-500/30 text-amber-300 bg-amber-500/10' :
-                        emp.tier === 'Manager' ? 'border-purple-500/30 text-purple-300 bg-purple-500/10' :
-                        emp.tier === 'Team Leader' ? 'border-sky-500/30 text-sky-300 bg-sky-500/10' :
-                        'border-slate-700 text-slate-300 bg-slate-800'
-                      }`}>
-                        {emp.tier}
+            return (
+              <div
+                key={emp.id}
+                onClick={() => setSelectedEmployee(emp)}
+                className={`p-4 rounded-xl border transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                  isSelected
+                    ? 'bg-slate-900 border-amber-500/70 shadow-md'
+                    : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-slate-200 text-sm">
+                    {emp.name.charAt(0)}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-slate-100 text-sm">{emp.name}</span>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${clearance.badge}`}>
+                        Lv.{emp.clearanceLevel || 1} {clearance.title}
                       </span>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <div className="text-xs font-mono font-bold text-amber-400">
-                        Lv.{emp.level}/{rank.maxLevels} ({emp.xp} XP)
-                      </div>
-                      <div className="text-[10px] text-slate-400">{rank.title}</div>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      {emp.status === 'Active' ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Active
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-rose-400">
-                          <span className="w-1.5 h-1.5 rounded-full bg-rose-400" /> Dormant
-                        </span>
+                    </div>
+                    <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                      <span>{emp.role}</span>
+                      <span>&bull;</span>
+                      <span className="text-amber-400">{emp.department}</span>
+                      {primaryManager && (
+                        <>
+                          <span>&bull;</span>
+                          <span className="text-slate-500">Reports to: <strong className="text-slate-300">{primaryManager.name}</strong></span>
+                        </>
                       )}
-                    </td>
-                    <td className="px-5 py-3.5 text-right space-x-1.5">
-                      <button
-                        onClick={() => setEditingEmp(emp)}
-                        className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded transition"
-                        title="Promote or change role"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      {emp.status === 'Active' && emp.name !== 'Marcus Vance' && (
-                        <button
-                          onClick={() => setTargetDormant(emp)}
-                          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded transition"
-                          title="Offboard / Set dormant & reassign"
-                        >
-                          <UserX className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2 py-1 rounded">
+                    {emp.xp} XP
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-slate-500" />
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        {/* Edit or Enroll Form */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 space-y-4">
-          <h3 className="font-semibold text-slate-100 text-sm flex items-center gap-2">
-            <Plus className="w-4 h-4 text-emerald-400" />
-            {editingEmp ? `Promote / Edit: ${editingEmp.name}` : 'Enroll New Team Member'}
-          </h3>
+        {/* Right Col: Topology & Privilege Inspector */}
+        <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-5 space-y-4">
+          {selectedEmployee ? (
+            <div>
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div>
+                  <h3 className="font-bold text-slate-100 text-sm">{selectedEmployee.name}</h3>
+                  <p className="text-xs text-slate-400">{selectedEmployee.role}</p>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 bg-slate-800 text-slate-300 rounded border border-slate-700">
+                  ID: #{selectedEmployee.id}
+                </span>
+              </div>
 
-          {!editingEmp ? (
+              {/* Clearance Level Slider */}
+              <div className="mt-4 space-y-1.5">
+                <div className="flex justify-between items-center text-xs">
+                  <label className="font-semibold text-slate-300">Security Clearance Level</label>
+                  <span className="text-amber-400 font-mono font-bold">
+                    Level {selectedEmployee.clearanceLevel || 1}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="1"
+                  value={selectedEmployee.clearanceLevel || 1}
+                  onChange={(e) => handleUpdateEmployee({
+                    ...selectedEmployee,
+                    clearanceLevel: Number(e.target.value) as ClearanceLevel,
+                  })}
+                  className="w-full accent-amber-500"
+                />
+                <p className="text-[11px] text-slate-400">
+                  {CLEARANCE_LABELS[selectedEmployee.clearanceLevel || 1].title}
+                </p>
+              </div>
+
+              {/* Primary Manager Assignment (Hierarchical & Matrix) */}
+              {(orgStructure === 'Hierarchical' || orgStructure === 'Matrix') && (
+                <div className="mt-4">
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">
+                    Primary Direct Manager
+                  </label>
+                  <select
+                    value={selectedEmployee.primaryManagerId || ''}
+                    onChange={(e) => handleUpdateEmployee({
+                      ...selectedEmployee,
+                      primaryManagerId: e.target.value ? Number(e.target.value) : undefined,
+                    })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="">None (Top-Level / Managing Director)</option>
+                    {potentialManagers
+                      .filter(m => m.id !== selectedEmployee.id)
+                      .map(m => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} ({m.role} - Lv.{m.clearanceLevel || 1})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Matrix Dotted-Line Managers */}
+              {orgStructure === 'Matrix' && (
+                <div className="mt-4">
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">
+                    Matrix Cross-Functional Lead (Dotted-Line)
+                  </label>
+                  <select
+                    value={(selectedEmployee.matrixManagerIds || [])[0] || ''}
+                    onChange={(e) => {
+                      const id = e.target.value ? Number(e.target.value) : null;
+                      handleUpdateEmployee({
+                        ...selectedEmployee,
+                        matrixManagerIds: id ? [id] : [],
+                      });
+                    }}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
+                  >
+                    <option value="">No Secondary Matrix Manager</option>
+                    {potentialManagers
+                      .filter(m => m.id !== selectedEmployee.id && m.id !== selectedEmployee.primaryManagerId)
+                      .map(m => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} ({m.department} Project Lead)
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Granular Permission Toggles */}
+              <div className="mt-5 pt-4 border-t border-slate-800 space-y-2.5">
+                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Granular RBAC Privileges</h4>
+                
+                {[
+                  { key: 'canViewTeamPipelines', label: 'View Subordinate Team Pipeline' },
+                  { key: 'canViewFinancials', label: 'View Deal Values & Invoicing Remittance' },
+                  { key: 'canApproveLeave', label: 'Approve Departmental Holiday Requests' },
+                  { key: 'canAuditActivity', label: 'Inspect Subordinate CTI Call Logs' },
+                  { key: 'canReallocateAccounts', label: 'Reallocate Deals on Dormancy' },
+                ].map((priv) => {
+                  const isChecked = Boolean(selectedEmployee.customPrivileges?.[priv.key as keyof typeof selectedEmployee.customPrivileges]);
+
+                  return (
+                    <label key={priv.key} className="flex items-center justify-between text-xs text-slate-300 cursor-pointer p-1.5 rounded hover:bg-slate-950">
+                      <span>{priv.label}</span>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          const updated = {
+                            ...(selectedEmployee.customPrivileges || {}),
+                            [priv.key]: e.target.checked,
+                          };
+                          handleUpdateEmployee({
+                            ...selectedEmployee,
+                            customPrivileges: updated,
+                          });
+                        }}
+                        className="rounded border-slate-700 text-amber-500 focus:ring-0"
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12 text-slate-500 text-xs">
+              Select an employee from the roster to inspect and configure their reporting lines, clearance, and access privileges.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* New Employee Intake Modal */}
+      {isNewModalOpen && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+            <h3 className="text-base font-bold text-slate-100 mb-4 flex items-center gap-2">
+              <UserPlus className="w-4 h-4 text-emerald-400" /> Enroll New Staff Member
+            </h3>
             <form onSubmit={handleCreateEmployee} className="space-y-3.5">
               <div>
-                <label className="text-[11px] font-semibold text-slate-400 block mb-1">Full Name</label>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Full Name</label>
                 <input
                   type="text"
-                  placeholder="e.g. Jessica Taylor"
-                  value={newEmpForm.name}
-                  onChange={(e) => setNewEmpForm({ ...newEmpForm, name: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
+                  placeholder="e.g. Rachel Bennett"
+                  value={newHire.name}
+                  onChange={(e) => setNewHire({ ...newHire, name: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100"
                   required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Department</label>
+                  <select
+                    value={newHire.department}
+                    onChange={(e) => setNewHire({ ...newHire, department: e.target.value as DepartmentRole })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200"
+                  >
+                    {(['Sales', 'Operations', 'Finance', 'HR', 'Marketing', 'IT'] as DepartmentRole[]).map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Clearance Level</label>
+                  <select
+                    value={newHire.clearanceLevel}
+                    onChange={(e) => setNewHire({ ...newHire, clearanceLevel: Number(e.target.value) as ClearanceLevel })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200"
+                  >
+                    <option value={1}>Lv.1 Individual Contributor</option>
+                    <option value={2}>Lv.2 Team Lead</option>
+                    <option value={3}>Lv.3 Head of Department</option>
+                    <option value={4}>Lv.4 Division Director</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Official Job Title</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Senior Business Development Exec"
+                  value={newHire.role}
+                  onChange={(e) => setNewHire({ ...newHire, role: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100"
                 />
               </div>
 
               <div>
-                <label className="text-[11px] font-semibold text-slate-400 block mb-1">Job Title</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Operations Coordinator"
-                  value={newEmpForm.role}
-                  onChange={(e) => setNewEmpForm({ ...newEmpForm, role: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
-                  required
-                />
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Primary Manager</label>
+                <select
+                  value={newHire.primaryManagerId || ''}
+                  onChange={(e) => setNewHire({ ...newHire, primaryManagerId: e.target.value ? Number(e.target.value) : undefined })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200"
+                >
+                  <option value="">None (Reports to MD)</option>
+                  {potentialManagers.map(m => (
+                    <option key={m.id} value={m.id}>{m.name} ({m.role})</option>
+                  ))}
+                </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-400 block mb-1">Department</label>
-                  <select
-                    value={newEmpForm.department}
-                    onChange={(e) => setNewEmpForm({ ...newEmpForm, department: e.target.value as any })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200"
-                  >
-                    <option value="Sales">Sales</option>
-                    <option value="Operations">Operations</option>
-                    <option value="Finance">Finance</option>
-                    <option value="HR">HR</option>
-                    <option value="Marketing">Marketing</option>
-                    <option value="IT">IT</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-400 block mb-1">Hierarchy Tier</label>
-                  <select
-                    value={newEmpForm.tier}
-                    onChange={(e) => setNewEmpForm({ ...newEmpForm, tier: e.target.value as any })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200"
-                  >
-                    <option value="Staff">Staff (10 Levels)</option>
-                    <option value="Team Leader">Team Leader (5 Levels)</option>
-                    <option value="Manager">Manager (5 Levels)</option>
-                    <option value="Director">Director (5 Levels)</option>
-                  </select>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold transition"
-              >
-                Enroll Personnel
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleUpdateEmployee} className="space-y-3.5">
-              <div>
-                <label className="text-[11px] font-semibold text-slate-400 block mb-1">Job Title</label>
-                <input
-                  type="text"
-                  value={editingEmp.role}
-                  onChange={(e) => setEditingEmp({ ...editingEmp, role: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-400 block mb-1">Department</label>
-                  <select
-                    value={editingEmp.department}
-                    onChange={(e) => setEditingEmp({ ...editingEmp, department: e.target.value as any })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200"
-                  >
-                    <option value="Sales">Sales</option>
-                    <option value="Operations">Operations</option>
-                    <option value="Finance">Finance</option>
-                    <option value="HR">HR</option>
-                    <option value="Marketing">Marketing</option>
-                    <option value="IT">IT</option>
-                    <option value="MD">MD</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-400 block mb-1">Hierarchy Tier</label>
-                  <select
-                    value={editingEmp.tier}
-                    onChange={(e) => setEditingEmp({ ...editingEmp, tier: e.target.value as any })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200"
-                  >
-                    <option value="Staff">Staff (10 Levels)</option>
-                    <option value="Team Leader">Team Leader (5 Levels)</option>
-                    <option value="Manager">Manager (5 Levels)</option>
-                    <option value="Director">Director (5 Levels)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setEditingEmp(null)}
-                  className="flex-1 py-1.5 text-xs text-slate-400 border border-slate-800 rounded-lg"
+                  onClick={() => setIsNewModalOpen(false)}
+                  className="px-4 py-2 text-xs text-slate-400 hover:text-slate-200"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-1.5 text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg"
+                  className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs"
                 >
-                  Save Promotion
+                  Enroll Staff Member
                 </button>
               </div>
             </form>
-          )}
+          </div>
         </div>
-      </div>
-    </section>
+      )}
+    </div>
   );
 }
