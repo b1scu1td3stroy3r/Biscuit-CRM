@@ -1,5 +1,6 @@
 'use client';
 import ProcurementDesk from '../components/ProcurementDesk';
+import OperationsDesk from '../components/OperationsDesk';
 import { canAccessCloudAndDataSettings } from '../lib/cloudGuard';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
