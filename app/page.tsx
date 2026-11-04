@@ -1200,6 +1200,10 @@ export default function Dashboard() {
           >
             <Headphones className="w-3.5 h-3.5 text-teal-400" /> CS Support & Telephony
           </button>
+            </>
+          )}
+
+        {(isMD || department === 'Operations' || allowedTabs.includes('operations')) && (
           <button
             onClick={() => setViewMode('operations' as any)}
             className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${
@@ -1210,8 +1214,7 @@ export default function Dashboard() {
           >
             <Wrench className="w-3.5 h-3.5 text-purple-400" /> Operations & Dispatch
           </button>
-            </>
-          )}
+        )}
 
           <button
             onClick={() => setViewMode('table')}
@@ -1310,6 +1313,15 @@ export default function Dashboard() {
       {viewMode === 'procurement' && (
         <div className="mt-4">
           <ProcurementDesk currentEmployee={currentProfile} />
+        </div>
+      )}
+      {viewMode === ('operations' as any) && (
+        <div className="mt-4">
+          <OperationsDesk 
+            onAwardXp={(amount, reason) => {
+              awardRepXP(amount, reason);
+            }} 
+          />
         </div>
       )}
       {viewMode === 'finance' && (isMD || allowedTabs.includes('finance')) && (
