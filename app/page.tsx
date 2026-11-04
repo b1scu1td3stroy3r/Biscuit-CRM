@@ -39,7 +39,7 @@ declare global {
   }
 }
 
-type ViewTabType = 'kanban' | 'table' | 'gantt' | 'templates' | 'hub' | 'finance' | 'roster' | 'telephony' | 'mailchimp' | 'import';
+type ViewTabType = 'kanban' | 'table' | 'gantt' | 'templates' | 'hub' | 'finance' | 'roster' | 'telephony' | 'mailchimp' | 'import' | 'procurement';
 
 const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; color: string; defaultTab: ViewTabType; allowedTabs: ViewTabType[] }> = {
   MD: { 
@@ -1056,28 +1056,28 @@ export default function Dashboard() {
         )}
 
         {(isMD || allowedTabs.includes('finance')) && (
-          <button
+            <>
+              <button
             onClick={() => setViewMode('finance')}
             className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'finance' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
           >
             <PoundSterling className="w-3.5 h-3.5 text-emerald-400" /> Finance & Billing Desk
-          </button>
-            <button
+            </button>
+              <button
               onClick={() => setViewMode('procurement')}
               className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'procurement' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
             >
-              <Building className="w-3.5 h-3.5 text-indigo-400" /> Procurement & Vendors
+              <Building2 className="w-3.5 h-3.5 text-indigo-400" /> Procurement & Vendors
             </button>
-        )}
+            </>
+          )}
 
-        {(isMD || allowedTabs.includes('table')) && (
           <button
             onClick={() => setViewMode('table')}
             className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'table' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
           >
             <List className="w-3.5 h-3.5" /> Table View ({contacts.length})
           </button>
-        )}
 
         {(isMD || allowedTabs.includes('gantt')) && (
           <button
