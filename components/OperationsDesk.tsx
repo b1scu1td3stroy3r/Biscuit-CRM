@@ -101,7 +101,16 @@ export default function OperationsDesk({
     if (typeof window !== "undefined") {
       try {
         const saved = localStorage.getItem("biscuit_crm_dispatch_orders");
-        if (saved) return JSON.parse(saved);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            // Check if stored data uses the legacy string format for items
+            const isLegacy = parsed.some(ord => typeof ord.items === "string" || !Array.isArray(ord.items));
+            if (!isLegacy) {
+              return parsed;
+            }
+          }
+        }
       } catch (err) {
         console.warn("Failed to read dispatch orders from localStorage", err);
       }
@@ -307,7 +316,8 @@ Shipping Cost: £${parsedCost.toFixed(2)} (Deducted from daily revenue)`);
           </thead>
           <tbody className="divide-y divide-slate-800/60 bg-slate-900/60">
             {orders.map(order => {
-              const allItemsPicked = order.items.every(i => i.status === "Picked" || i.status === "Shipped");
+              const safeItems = Array.isArray(order.items) ? order.items : [];
+              const allItemsPicked = safeItems.length > 0 && safeItems.every(i => i.status === "Picked" || i.status === "Shipped");
               return (
                 <tr key={order.id} className="hover:bg-slate-800/40 transition">
                   <td className="py-3 px-4 font-mono font-bold text-purple-300 align-top">
@@ -322,7 +332,7 @@ Shipping Cost: £${parsedCost.toFixed(2)} (Deducted from daily revenue)`);
                   </td>
                   <td className="py-3 px-4 align-top">
                     <div className="space-y-2">
-                      {order.items.map(item => (
+                      {safeItems.map(item => (
                         <div
                           key={item.id}
                           className={`p-2 rounded-lg border text-[11px] transition ${
