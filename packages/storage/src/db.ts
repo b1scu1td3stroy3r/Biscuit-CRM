@@ -12,6 +12,13 @@ export interface CustomPrivileges {
   canApproveLeave?: boolean;
   canAuditActivity?: boolean;
   canReallocateAccounts?: boolean;
+  // Granular capability overrides decoupled from department names
+  canRunPayroll?: boolean;         // Enables running payroll (assigned to HR or Finance)
+  canApproveRefunds?: boolean;     // CS refund authorization sign-off
+  canDispatchWms?: boolean;        // Warehouse pick, pack & dispatch actions
+  canIssuePO?: boolean;            // Procurement supplier purchase order generation
+  canManageRoster?: boolean;       // IT/HR staff tier management & offboarding
+  allowedViewTabs?: string[];      // Explicit tab overrides (e.g. ['kanban', 'hub'])
 }
 
 export interface EmployeeProfile {
