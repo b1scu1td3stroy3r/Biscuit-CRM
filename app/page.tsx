@@ -9,16 +9,14 @@ import { scheduleBiscuitSync } from '../packages/storage/src/biscuitSync';
 import '../lib/cloudGuard';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  Package, 
+import { Package, 
   ShieldCheck, Zap, Database, Building2, Headphones, Calendar as CalendarIcon, 
   FileText, CheckCircle2, Loader2, FolderCheck, Plus, Search, 
   RefreshCw, ExternalLink, ChevronRight, ChevronLeft, ArrowRight, LayoutGrid, List, Clock,
   BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, EyeOff, MapPin,
   Cloud, CloudOff, Hash, Users, Download, FileSpreadsheet, AlertTriangle, AlertCircle, Timer,
   Target, RotateCcw, Laptop, Briefcase, HeartHandshake, LifeBuoy, Megaphone, Wrench, PoundSterling, Crown,
-  Lock, Phone, PhoneCall, Upload, Flame, Sparkles, LogOut
-} from 'lucide-react';
+  Lock, Phone, PhoneCall, Upload, Flame, Sparkles, LogOut, Trophy } from 'lucide-react';
 import {
   db,
   DepartmentRole,
@@ -55,7 +53,7 @@ declare global {
   }
 }
 
-type ViewTabType = 'kanban' | 'table' | 'gantt' | 'templates' | 'hub' | 'finance' | 'roster' | 'telephony' | 'mailchimp' | 'import' | 'procurement' | 'customer-services' | 'operations';
+type ViewTabType = 'kanban' | 'table' | 'gantt' | 'templates' | 'hub' | 'finance' | 'roster' | 'telephony' | 'mailchimp' | 'import' | 'procurement' | 'customer-services' | 'operations' | 'it_helpdesk' | 'management';
 
 const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; color: string; defaultTab: ViewTabType; allowedTabs: ViewTabType[] }> = {
   MD: { 
@@ -63,7 +61,7 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
     icon: Crown, 
     color: 'text-amber-400 bg-amber-500/10 border-amber-500/30', 
     defaultTab: 'kanban',
-    allowedTabs: ['kanban', 'table', 'gantt', 'templates', 'hub', 'finance', 'roster', 'telephony', 'mailchimp', 'import']
+    allowedTabs: ['kanban', 'table', 'gantt', 'templates', 'hub', 'finance', 'roster', 'telephony', 'mailchimp', 'import', 'it_helpdesk', 'management']
   },
   Sales: { 
     label: 'Sales & Commercial', 
@@ -112,7 +110,7 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
     icon: Laptop, 
     color: 'text-sky-400 bg-sky-500/10 border-sky-500/20', 
     defaultTab: 'table',
-    allowedTabs: ['table', 'roster', 'import']
+    allowedTabs: ['table', 'roster', 'import', 'it_helpdesk', 'management', 'hub']
   },
   Finance: { 
     label: 'Finance & Invoicing', 
@@ -1353,6 +1351,30 @@ export default function Dashboard() {
           </button>
         )}
 
+        {/* IT Operations & Incident Desk */}
+        {(isMD || isIT || currentProfile?.department === 'IT' || allowedTabs?.includes('it_helpdesk')) && (
+          <button
+            onClick={() => setViewMode('it_helpdesk' as any)}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${
+              viewMode === 'it_helpdesk' ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/30' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <LifeBuoy className="w-3.5 h-3.5" /> IT Helpdesk & Audits
+          </button>
+        )}
+
+        {/* Supervisor Management Hub */}
+        {(isMD || isIT || (currentProfile && currentProfile.clearanceLevel >= 2) || allowedTabs?.includes('management')) && (
+          <button
+            onClick={() => setViewMode('management' as any)}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${
+              viewMode === 'management' ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Trophy className="w-3.5 h-3.5" /> Management Hub & KPIs
+          </button>
+        )}
+
         {(isMD || isIT) && (
           <button
             onClick={() => setViewMode('roster')}
@@ -1436,6 +1458,22 @@ export default function Dashboard() {
           }}
           currentUser={senderName}
           employees={roster}
+        />
+      )}
+
+      {/* Screen: IT Helpdesk */}
+      {viewMode === 'it_helpdesk' && (
+        <ITHelpdesk
+          currentProfile={currentProfile}
+          onAwardXP={awardRepXP}
+        />
+      )}
+
+      {/* Screen: Management Hub */}
+      {viewMode === 'management' && (
+        <ManagementHub
+          currentProfile={currentProfile}
+          onAwardXP={awardRepXP}
         />
       )}
 

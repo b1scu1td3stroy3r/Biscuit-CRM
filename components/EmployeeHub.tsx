@@ -488,6 +488,16 @@ export default function EmployeeHub({
         >
           <Calendar className="w-4 h-4" /> Annual Leave Tracker
         </button>
+
+        <button
+          onClick={() => setActiveTab('support' as any)}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition ${
+            activeTab === 'support' ? 'bg-indigo-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <LifeBuoy className="w-4 h-4" /> Raise IT / HR Ticket
+        </button>
+
         {isLeader && (
           <button
             onClick={() => setActiveTab('approvals')}
