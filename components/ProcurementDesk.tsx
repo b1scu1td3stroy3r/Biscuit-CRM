@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { db } from '../packages/storage/src/db';
 import {
   Building,
   Plus,
@@ -52,6 +53,19 @@ export interface PurchaseOrder {
   approvedBy?: string;
 }
 
+export interface StockItem {
+  id: string;
+  sku: string;
+  item: string;
+  category: string;
+  onHand: number;
+  reserved: number;
+  available: number;
+  reorderLevel: number;
+  location: string;
+  lastRestocked: string;
+}
+
 export interface VendorQuote {
   id: string;
   quoteRef: string;
@@ -67,13 +81,42 @@ export interface VendorQuote {
 }
 
 export default function ProcurementDesk({ currentEmployee }: { currentEmployee?: any }) {
-  const [activeTab, setActiveTab] = useState<'pos' | 'quotes' | 'vendors' | 'audit'>('pos');
+  const [activeTab, setActiveTab] = useState<'pos' | 'quotes' | 'vendors' | 'stock' | 'audit'>('pos');
   const [timeframe, setTimeframe] = useState<TimeframeFilter>('month');
 
   // Filters
   const [selectedVendorFilter, setSelectedVendorFilter] = useState<string>('all');
   const [itemSearchTerm, setItemSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  // Live Stock & Goods Inwards State
+  const [receivingPO, setReceivingPO] = useState<PurchaseOrder | null>(null);
+  const [receivedQty, setReceivedQty] = useState<number>(0);
+  const [stockLocation, setStockLocation] = useState<string>('Bay 1 - Rack A');
+
+  const [inventory, setInventory] = useState<StockItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('biscuit_crm_inventory');
+        if (saved) return JSON.parse(saved);
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+    return [
+      { id: 'stk-1', sku: 'BOX-EXP-500', item: 'Corrugated Boxes', category: 'Packaging', onHand: 450, reserved: 50, available: 400, reorderLevel: 100, location: 'Bay 2 - Rack B', lastRestocked: '2026-11-02' },
+      { id: 'stk-2', sku: 'STRP-HD-100', item: 'Reinforced Strapping Bands', category: 'Consumables', onHand: 800, reserved: 120, available: 680, reorderLevel: 200, location: 'Bay 1 - Shelf 4', lastRestocked: '2026-11-04' },
+      { id: 'stk-3', sku: 'CRTE-WTR-200', item: 'Heavy Duty Weatherproof Crates', category: 'Storage', onHand: 60, reserved: 15, available: 45, reorderLevel: 25, location: 'Bay 3 - Pallet Rack 1', lastRestocked: '2026-10-28' },
+    ];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('biscuit_crm_inventory', JSON.stringify(inventory));
+    } catch (e) {
+      console.warn(e);
+    }
+  }, [inventory]);
 
   // Modals
   const [showPOModal, setShowPOModal] = useState(false);
@@ -352,14 +395,108 @@ Biscuit CRM`;
     });
   };
 
-  const handleTransmitAndArchivePO = () => {
+  const handleTransmitAndArchivePO = async () => {
     if (!emailModalPO) return;
     const { po } = emailModalPO;
 
-    // Archive and update PO status to Sent / Archived in Audit
+    // 1. Update PO status to Sent
     setPos(pos.map(p => p.id === po.id ? { ...p, status: 'Sent' } : p));
+
+    // 2. Queue Pending Supplier Payable in Finance Ledger
+    try {
+      const existingTx = JSON.parse(localStorage.getItem('biscuit_crm_financial_transactions') || '[]');
+      const vat = po.amount * 0.20;
+      const gross = po.amount + vat;
+      const newPayable = {
+        id: `TX-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        type: 'outgoing',
+        category: 'Supplier Payable',
+        reference: po.poNumber,
+        counterparty: po.vendorName,
+        grossAmount: gross,
+        vatAmount: vat,
+        netAmount: po.amount,
+        status: 'Pending',
+        paymentMethod: 'Bank Transfer',
+        timestamp: new Date().toISOString()
+      };
+      localStorage.setItem('biscuit_crm_financial_transactions', JSON.stringify([newPayable, ...existingTx]));
+    } catch (err) {
+      console.warn('Failed to queue finance payable', err);
+    }
+
+    // 3. Post Finance To-Do Action in Newsfeed
+    try {
+      await db.newsFeed.add({
+        title: `ACTION REQUIRED: Supplier Payable ${po.poNumber}`,
+        content: `Procurement dispatched PO ${po.poNumber} to ${po.vendorName} (£${po.amount.toFixed(2)} Net + £${(po.amount * 0.2).toFixed(2)} VAT). Awaiting supplier invoice & settlement clearance.`,
+        category: 'Finance To-Do',
+        department: 'Finance',
+        actor: currentEmployee?.name || 'Managing Director',
+        badgeColor: 'border-amber-500/40 text-amber-300 bg-amber-500/10',
+        createdAt: new Date().toISOString()
+      });
+    } catch (err) {
+      console.warn('Failed to post newsfeed action', err);
+    }
+
     setEmailModalPO(null);
     setActiveTab('audit');
+    alert(`✅ Purchase Order ${po.poNumber} transmitted and queued as a pending action for the Finance team.`);
+  };
+
+  const handleConfirmGoodsIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!receivingPO) return;
+
+    // 1. Update PO Status to Received
+    setPos(pos.map(p => p.id === receivingPO.id ? { ...p, status: 'Received' } : p));
+
+    // 2. Update / Increment Stock in Inventory
+    setInventory(prev => {
+      const existing = prev.find(item => item.item.toLowerCase() === receivingPO.item.toLowerCase());
+      if (existing) {
+        return prev.map(item => item.id === existing.id ? {
+          ...item,
+          onHand: item.onHand + receivedQty,
+          available: item.available + receivedQty,
+          lastRestocked: new Date().toISOString().substring(0, 10),
+          location: stockLocation || item.location
+        } : item);
+      } else {
+        const newStock: StockItem = {
+          id: `stk-${Date.now()}`,
+          sku: `SKU-${receivingPO.item.substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
+          item: receivingPO.item,
+          category: 'Purchased Inventory',
+          onHand: receivedQty,
+          reserved: 0,
+          available: receivedQty,
+          reorderLevel: 20,
+          location: stockLocation || 'Bay 1 - Main Floor',
+          lastRestocked: new Date().toISOString().substring(0, 10)
+        };
+        return [newStock, ...prev];
+      }
+    });
+
+    // 3. Audit in Newsfeed for Sales and CS visibility
+    try {
+      await db.newsFeed.add({
+        title: `GOODS RECEIVED: +${receivedQty} units of ${receivingPO.item}`,
+        content: `Warehouse Goods In completed receipt of PO ${receivingPO.poNumber} from ${receivingPO.vendorName}. Available stock incremented in ${stockLocation}. Sales and CS pipelines updated.`,
+        category: 'Goods In',
+        department: 'Operations',
+        actor: currentEmployee?.name || 'Managing Director',
+        badgeColor: 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10',
+        createdAt: new Date().toISOString()
+      });
+    } catch (err) {
+      console.warn(err);
+    }
+
+    setReceivingPO(null);
+    alert(`✅ Goods In recorded: +${receivedQty} units added to live stock.`);
   };
 
   const handleRegisterVendor = (e: React.FormEvent) => {
@@ -500,6 +637,7 @@ Biscuit CRM`;
             { id: 'pos', label: `Purchase Orders (${filteredPOs.length})`, icon: FileText },
             { id: 'quotes', label: `Received Quotes (${filteredQuotes.length})`, icon: FileSpreadsheet },
             { id: 'vendors', label: `Approved Vendors (${vendors.length})`, icon: Building },
+            { id: 'stock', label: `Live Stock Levels (${inventory.length})`, icon: Layers },
             { id: 'audit', label: 'Spend Audit Trail', icon: ShieldCheck }
           ].map(tab => {
             const Icon = tab.icon;
@@ -704,12 +842,12 @@ Biscuit CRM`;
                     {po.status === 'Sent' && (
                       <button
                         onClick={() => {
-                          setPos(pos.map(p => p.id === po.id ? { ...p, status: 'Received' } : p));
-                          alert(`Stock Received for ${po.poNumber}`);
+                          setReceivingPO(po);
+                          setReceivedQty(po.quantity);
                         }}
-                        className="px-2.5 py-1 rounded bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-bold transition"
+                        className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold transition inline-flex items-center gap-1 shadow"
                       >
-                        Mark Received
+                        <Check className="w-3 h-3"/> Receive Goods
                       </button>
                     )}
                   </td>
@@ -824,6 +962,69 @@ Biscuit CRM`;
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+            {/* VIEW: LIVE STOCK LEVELS & GOODS IN AUDIT */}
+      {activeTab === 'stock' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <Layers className="w-4 h-4 text-emerald-400"/> Centralized Warehouse Stock & Inventory Ledger
+              </h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Real-time stock levels synchronized across Procurement, Sales quotes, and Customer Services support cases.
+              </p>
+            </div>
+            <span className="text-xs font-mono text-slate-400">
+              Total Units On Hand: {inventory.reduce((s, i) => s + i.onHand, 0).toLocaleString()}
+            </span>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-800">
+            <table className="w-full text-left text-xs text-slate-300">
+              <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                <tr>
+                  <th className="py-3 px-4">SKU Code</th>
+                  <th className="py-3 px-4">Item & Description</th>
+                  <th className="py-3 px-4">Category</th>
+                  <th className="py-3 px-4">Location Bay</th>
+                  <th className="py-3 px-4 text-right">Physical On Hand</th>
+                  <th className="py-3 px-4 text-right">Reserved (Sales)</th>
+                  <th className="py-3 px-4 text-right">Available to Sell</th>
+                  <th className="py-3 px-4 text-center">Stock Health</th>
+                  <th className="py-3 px-4 text-right">Last Restocked</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 bg-slate-900/60 font-mono">
+                {inventory.map(item => {
+                  const isLow = item.available <= item.reorderLevel;
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-800/40 transition">
+                      <td className="py-3 px-4 text-indigo-400 font-bold">{item.sku}</td>
+                      <td className="py-3 px-4 font-sans font-bold text-white">{item.item}</td>
+                      <td className="py-3 px-4 font-sans text-slate-400">{item.category}</td>
+                      <td className="py-3 px-4 text-slate-300">{item.location}</td>
+                      <td className="py-3 px-4 text-right text-slate-200 font-bold">{item.onHand.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-right text-amber-400">{item.reserved.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-right text-emerald-400 font-black text-sm">{item.available.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                          isLow
+                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                            : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                        }`}>
+                          {isLow ? 'LOW STOCK' : 'IN STOCK'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right text-slate-500 font-sans">{item.lastRestocked}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -1296,6 +1497,96 @@ Biscuit CRM`;
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* MODAL 5: GOODS INWARDS RECEIVING & STOCK INCREMENT */}
+      {receivingPO && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400"/> Goods Inwards Receiving Dock
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Receiving stock against <span className="text-indigo-400 font-mono font-bold">{receivingPO.poNumber}</span> from {receivingPO.vendorName}.
+                </p>
+              </div>
+              <button onClick={() => setReceivingPO(null)} className="text-slate-400 hover:text-white p-1">
+                <X className="w-5 h-5"/>
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmGoodsIn} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Item Title</label>
+                <input
+                  type="text"
+                  disabled
+                  value={receivingPO.item}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-bold cursor-not-allowed"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Ordered Quantity</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={`${receivingPO.quantity} units`}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-400 font-mono cursor-not-allowed"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Accepted Inwards Qty</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={receivedQty}
+                    onChange={(e) => setReceivedQty(parseInt(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Assign Warehouse Bin / Bay Location</label>
+                <select
+                  value={stockLocation}
+                  onChange={(e) => setStockLocation(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="Bay 1 - Rack A">Bay 1 - Rack A (Fast Picking)</option>
+                  <option value="Bay 2 - Rack B">Bay 2 - Rack B (Export Packaging)</option>
+                  <option value="Bay 3 - Pallet Rack 1">Bay 3 - Pallet Rack 1 (Heavy Bulk)</option>
+                  <option value="Bay 4 - Quarantine / Inspec">Bay 4 - Quarantine / Inspection</option>
+                </select>
+              </div>
+
+              <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 flex items-center justify-between text-xs font-mono">
+                <span className="text-emerald-300">New Physical Addition:</span>
+                <span className="text-emerald-400 font-black">+{receivedQty} Units into Live Stock</span>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReceivingPO(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow transition"
+                >
+                  <CheckCircle2 className="w-4 h-4"/> Confirm Stock Ingest & Increment
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
