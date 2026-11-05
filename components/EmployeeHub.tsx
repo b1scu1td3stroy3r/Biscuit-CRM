@@ -100,6 +100,23 @@ export default function EmployeeHub({
     handoverActive: false,
   });
 
+    const [activeKpis, setActiveKpis] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function loadDepartmentKpis() {
+      try {
+        const empDept = profile?.department || 'Sales';
+        const kpis = await db.teamKpis
+          .filter(k => k.department === empDept || (k.department as string) === 'All' || (k as any).assigneeId === profile?.id || (k as any).assignee === profile?.name)
+          .toArray();
+        setActiveKpis(kpis);
+      } catch (err) {
+        console.error('Failed to load KPIs:', err);
+      }
+    }
+    loadDepartmentKpis();
+  }, [profile?.department, profile?.id]);
+
   const [notes, setNotes] = useState<WhiteboardNote[]>([]);
   const [newNoteText, setNewNoteText] = useState('');
   const [newNoteTitle, setNewNoteTitle] = useState('');
