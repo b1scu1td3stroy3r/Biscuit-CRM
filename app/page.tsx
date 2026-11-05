@@ -1,4 +1,5 @@
 'use client';
+import { MoreHorizontal, ChevronDown, Send } from 'lucide-react';
 import ProcurementDesk from '../components/ProcurementDesk';
 import OperationsDesk from '../components/OperationsDesk';
 import CustomerServicesDesk from '../components/CustomerServicesDesk';
@@ -311,6 +312,7 @@ export default function Dashboard() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [lastSyncedSheetId, setLastSyncedSheetId] = useState<string | null>(null);
+  const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewTabType>('kanban');
 
   const [isCommandOpen, setIsCommandOpen] = useState(false);
@@ -1317,30 +1319,82 @@ export default function Dashboard() {
           </button>
         )}
 
+        {/* Consolidated Utilities & Workspace Tools Popover */}
+        <div className="relative">
           <button
-            onClick={() => setViewMode('table')}
-            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'table' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+            type="button"
+            onClick={() => setToolsMenuOpen(!toolsMenuOpen)}
+            className={`px-3 py-2 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition border ${
+              ['table', 'gantt', 'templates', 'telephony', 'mailchimp', 'import'].includes(viewMode)
+                ? 'bg-slate-800 text-amber-400 border-amber-500/40 font-bold shadow'
+                : 'text-slate-400 hover:text-slate-200 border-slate-800 hover:border-slate-700 bg-slate-900/60'
+            }`}
           >
-            <List className="w-3.5 h-3.5" /> Table View ({contacts.length})
+            <MoreHorizontal className="w-3.5 h-3.5" />
+            <span>Tools & Analytics</span>
+            <ChevronDown className="w-3 h-3 text-slate-500" />
           </button>
 
-        {(isMD || allowedTabs.includes('gantt')) && (
-          <button
-            onClick={() => setViewMode('gantt')}
-            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'gantt' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-          >
-            <CalendarIcon className="w-3.5 h-3.5" /> Gantt & Milestones ({tasks.length})
-          </button>
-        )}
+          {toolsMenuOpen && (
+            <div
+              className="absolute left-0 mt-2 w-56 rounded-xl bg-slate-900 border border-slate-800 shadow-2xl py-2 z-50 backdrop-blur-md"
+              onMouseLeave={() => setToolsMenuOpen(false)}
+            >
+              <button
+                onClick={() => { setViewMode('table'); setToolsMenuOpen(false); }}
+                className={`w-full text-left px-4 py-2 text-xs flex items-center gap-2 hover:bg-slate-800/80 transition ${
+                  viewMode === 'table' ? 'text-amber-400 font-bold bg-slate-800/50' : 'text-slate-300'
+                }`}
+              >
+                <List className="w-3.5 h-3.5 text-slate-400" /> Table Master View ({contacts.length})
+              </button>
 
-        {(isMD || allowedTabs.includes('templates')) && (
-          <button
-            onClick={() => setViewMode('templates')}
-            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'templates' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-          >
-            <BookOpen className="w-3.5 h-3.5" /> Template Vault
-          </button>
-        )}
+              {(isMD || allowedTabs.includes('gantt')) && (
+                <button
+                  onClick={() => { setViewMode('gantt'); setToolsMenuOpen(false); }}
+                  className={`w-full text-left px-4 py-2 text-xs flex items-center gap-2 hover:bg-slate-800/80 transition ${
+                    viewMode === 'gantt' ? 'text-amber-400 font-bold bg-slate-800/50' : 'text-slate-300'
+                  }`}
+                >
+                  <CalendarIcon className="w-3.5 h-3.5 text-slate-400" /> Gantt & Milestones ({tasks.length})
+                </button>
+              )}
+
+              {(isMD || allowedTabs.includes('templates')) && (
+                <button
+                  onClick={() => { setViewMode('templates'); setToolsMenuOpen(false); }}
+                  className={`w-full text-left px-4 py-2 text-xs flex items-center gap-2 hover:bg-slate-800/80 transition ${
+                    viewMode === 'templates' ? 'text-amber-400 font-bold bg-slate-800/50' : 'text-slate-300'
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5 text-slate-400" /> Template Vault
+                </button>
+              )}
+
+              {(isMD || allowedTabs.includes('telephony')) && (
+                <button
+                  onClick={() => { setViewMode('telephony'); setToolsMenuOpen(false); }}
+                  className={`w-full text-left px-4 py-2 text-xs flex items-center gap-2 hover:bg-slate-800/80 transition ${
+                    viewMode === 'telephony' ? 'text-amber-400 font-bold bg-slate-800/50' : 'text-slate-300'
+                  }`}
+                >
+                  <Phone className="w-3.5 h-3.5 text-slate-400" /> CTI Telephony & Dialing
+                </button>
+              )}
+
+              {(isMD || allowedTabs.includes('mailchimp')) && (
+                <button
+                  onClick={() => { setViewMode('mailchimp'); setToolsMenuOpen(false); }}
+                  className={`w-full text-left px-4 py-2 text-xs flex items-center gap-2 hover:bg-slate-800/80 transition ${
+                    viewMode === 'mailchimp' ? 'text-amber-400 font-bold bg-slate-800/50' : 'text-slate-300'
+                  }`}
+                >
+                  <Send className="w-3.5 h-3.5 text-slate-400" /> Mailchimp Connector
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {(isMD || allowedTabs.includes('hub')) && (
           <button

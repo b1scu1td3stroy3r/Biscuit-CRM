@@ -29,7 +29,13 @@ interface ManagementHubProps {
   onAwardXP?: (amount: number, reason: string) => void;
 }
 
-export default function ManagementHub({ currentProfile, onAwardXP }: ManagementHubProps) {
+export default function ManagementHub({
+  currentProfile,
+  onAwardXP
+}: ManagementHubProps) {
+  const isMD = currentProfile?.clearanceLevel === 5 || (currentProfile?.role && currentProfile.role.toLowerCase().includes('director')) || (currentProfile?.department === 'MD');
+  const [selectedDept, setSelectedDept] = useState<string>(currentProfile?.department || 'Sales');
+  const [targetTeam, setTargetTeam] = useState<string>('All Teams');
   const [kpis, setKpis] = useState<TeamKPI[]>([]);
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
   const [activeHorizon, setActiveHorizon] = useState<KPIHorizon>('Daily');
@@ -247,17 +253,59 @@ export default function ManagementHub({ currentProfile, onAwardXP }: ManagementH
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Target Scope</label>
-                  <select
-                    value={targetScope}
-                    onChange={(e) => setTargetScope(e.target.value as 'Team' | 'Individual')}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400"
-                  >
-                    <option value="Team">Whole Team / Dept</option>
-                    <option value="Individual">Individual Member</option>
-                  </select>
-                </div>
+                      {/* Department & Team Hierarchy Selector */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs font-semibold text-slate-400 block mb-1">Target Department</label>
+          {isMD ? (
+            <select
+              value={selectedDept}
+              onChange={(e) => setSelectedDept(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+            >
+              <option value="Sales">Sales & Commercial</option>
+              <option value="Operations">Operations & Dispatch</option>
+              <option value="Procurement">Procurement & Stock</option>
+              <option value="Finance">Finance & Billing</option>
+              <option value="IT">IT & Infrastructure</option>
+              <option value="Customer Service">Customer Services</option>
+            </select>
+          ) : (
+            <input
+              type="text"
+              disabled
+              value={currentProfile?.department || 'General'}
+              className="w-full bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-400"
+            />
+          )}
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold text-slate-400 block mb-1">Team / Squad</label>
+          <select
+            value={targetTeam}
+            onChange={(e) => setTargetTeam(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+          >
+            <option value="All Teams">All Department Squads</option>
+            <option value="Inbound Squad">Inbound / Triage</option>
+            <option value="Outbound Specialists">Outbound Specialists</option>
+            <option value="Senior Tier">Senior Tier</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs font-semibold text-slate-400 block mb-1">Assignment Scope</label>
+        <select
+          value={targetScope}
+          onChange={(e) => setTargetScope(e.target.value as any)}
+          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+        >
+          <option value="team">Whole Department / Team Quota</option>
+          <option value="individual">Individual Staff Member</option>
+        </select>
+      </div>
 
                 {targetScope === 'Individual' && (
                   <div>
