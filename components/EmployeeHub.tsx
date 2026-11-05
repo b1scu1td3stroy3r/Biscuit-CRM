@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
+import {
+  LifeBuoy, 
   Trophy, Award, Flame, UserCheck, Calendar, ArrowRightLeft, 
   StickyNote, Plus, Trash2, CheckCircle2, Clock, ShieldCheck, 
   Sparkles, Check, AlertCircle, Send, CalendarCheck2, Mail, ExternalLink,
   XCircle, Crown, X
 } from 'lucide-react';
-import { db, Contact, WhiteboardNote, LeaveRequest, EmployeeProfile, DepartmentRole, StaffHierarchyTier } from '../packages/storage/src/db';
+import { db, Contact, StaffHierarchyTier, EmployeeProfile, WhiteboardNote, LeaveRequest } from '../packages/storage/src/db';
 import { syncLeaveToGoogleCalendar, deleteCalendarEvent } from '../packages/storage/src/calendarSync';
 
 interface EmployeeHubProps {
@@ -81,10 +82,14 @@ export default function EmployeeHub({
   onRepNameChange,
   onAuthenticateGoogle,
 }: EmployeeHubProps) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'handover' | 'whiteboard' | 'leave' | 'approvals'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'handover' | 'whiteboard' | 'leave' | 'approvals' | 'support'>('profile');
+  const [supportType, setSupportType] = useState<'IT' | 'HR'>('IT');
+  const [supportTitle, setSupportTitle] = useState('');
+  const [supportDesc, setSupportDesc] = useState('');
+  const [supportPriority, setSupportPriority] = useState('P3-Medium');
   
   const [profile, setProfile] = useState<EmployeeProfile>({
-    name: currentRepName || 'Sarah Jenkins',
+    name: currentRepName || 'Team Member',
     role: 'Sales Lead',
     department: 'Sales',
     tier: 'Team Leader',
@@ -185,6 +190,58 @@ export default function EmployeeHub({
     if (!id) return;
     await db.whiteboardNotes.delete(id);
     await loadHubData();
+  };
+
+    const handleRaiseTicket = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supportTitle.trim()) return;
+    const now = new Date().toISOString();
+
+    if (supportType === 'IT') {
+      const count = await db.itTickets.count();
+      const ticketNumber = `IT-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+      await db.itTickets.add({
+        ticketNumber,
+        title: supportTitle,
+        description: supportDesc,
+        category: 'Hardware',
+        priority: supportPriority as any,
+        status: 'Triage',
+        requesterName: profile?.name || currentRepName || 'Staff Member',
+        requesterEmail: profile?.email || 'staff@internal.corp',
+        requesterDepartment: profile?.department || 'Sales',
+        targetResolutionHours: 48,
+        history: [{
+          timestamp: now,
+          actor: profile?.name || currentRepName || 'Staff Member',
+          action: 'Incident Raised via Employee Hub',
+          details: supportTitle
+        }],
+        createdAt: now,
+        updatedAt: now
+      });
+    } else {
+      const count = await db.internalTickets.count();
+      const ticketNumber = `HR-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+      await db.internalTickets.add({
+        ticketNumber,
+        type: 'HR',
+        category: 'General',
+        subject: supportTitle,
+        details: supportDesc,
+        priority: 'Medium',
+        status: 'Open',
+        requesterName: profile?.name || currentRepName || 'Staff Member',
+        requesterEmail: profile?.email || 'staff@internal.corp',
+        requesterDepartment: profile?.department || 'Sales',
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+
+    setSupportTitle('');
+    setSupportDesc('');
+    alert(`${supportType} Ticket logged successfully! Dispatched to department queue.`);
   };
 
   const handleCreateLeave = async (e: React.FormEvent) => {
@@ -623,6 +680,90 @@ export default function EmployeeHub({
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Tab: Support Requests (IT & HR) */}
+      {activeTab === 'support' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+            <div>
+              <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                <LifeBuoy className="w-4 h-4 text-indigo-400" /> Internal Service Desk & Ticketing
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Raise an IT workstation issue or submit a confidential HR request directly to department leads.
+              </p>
+            </div>
+
+            <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setSupportType('IT')}
+                className={`px-3 py-1.5 rounded-lg transition ${supportType === 'IT' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400'}`}
+              >
+                IT Support
+              </button>
+              <button
+                type="button"
+                onClick={() => setSupportType('HR')}
+                className={`px-3 py-1.5 rounded-lg transition ${supportType === 'HR' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400'}`}
+              >
+                HR Inquiry
+              </button>
+            </div>
+          </div>
+
+          <form onSubmit={handleRaiseTicket} className="space-y-4 max-w-xl">
+            <div>
+              <label className="text-xs font-semibold text-slate-400 block mb-1">
+                {supportType === 'IT' ? 'IT Incident / Asset Problem' : 'HR Subject / Request Category'}
+              </label>
+              <input
+                type="text"
+                required
+                placeholder={supportType === 'IT' ? 'e.g. Cannot access VPN client or keyboard replacement' : 'e.g. Payroll tax code adjustment inquiry'}
+                value={supportTitle}
+                onChange={(e) => setSupportTitle(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            {supportType === 'IT' && (
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Impact & Priority</label>
+                <select
+                  value={supportPriority}
+                  onChange={(e) => setSupportPriority(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="P1-Critical">P1 Critical (Work completely blocked)</option>
+                  <option value="P2-High">P2 High (Impacting major workflow)</option>
+                  <option value="P3-Medium">P3 Medium (Normal operational inquiry)</option>
+                  <option value="P4-Low">P4 Low (Non-urgent enhancement)</option>
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs font-semibold text-slate-400 block mb-1">Detailed Description</label>
+              <textarea
+                rows={4}
+                required
+                placeholder="Provide complete context, affected files, device IDs, or dates..."
+                value={supportDesc}
+                onChange={(e) => setSupportDesc(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/20 transition flex items-center gap-2"
+            >
+              <LifeBuoy className="w-4 h-4" /> Dispatch {supportType} Ticket
+            </button>
+          </form>
         </div>
       )}
 

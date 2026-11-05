@@ -2,6 +2,8 @@
 import ProcurementDesk from '../components/ProcurementDesk';
 import OperationsDesk from '../components/OperationsDesk';
 import CustomerServicesDesk from '../components/CustomerServicesDesk';
+import ITHelpdesk from '../components/ITHelpdesk';
+import ManagementHub from '../components/ManagementHub';
 import OnboardingWizard from '../components/OnboardingWizard';
 import { scheduleBiscuitSync } from '../packages/storage/src/biscuitSync';
 import '../lib/cloudGuard';
@@ -14,7 +16,7 @@ import {
   RefreshCw, ExternalLink, ChevronRight, ChevronLeft, ArrowRight, LayoutGrid, List, Clock,
   BookOpen, Copy, Mail, Check, UserCheck, Activity, DownloadCloud, Eye, EyeOff, MapPin,
   Cloud, CloudOff, Hash, Users, Download, FileSpreadsheet, AlertTriangle, AlertCircle, Timer,
-  Target, RotateCcw, Laptop, Briefcase, HeartHandshake, Megaphone, Wrench, PoundSterling, Crown,
+  Target, RotateCcw, Laptop, Briefcase, HeartHandshake, LifeBuoy, Megaphone, Wrench, PoundSterling, Crown,
   Lock, Phone, PhoneCall, Upload, Flame, Sparkles, LogOut
 } from 'lucide-react';
 import {
