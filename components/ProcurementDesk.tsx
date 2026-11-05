@@ -21,7 +21,9 @@ import {
   Building2,
   Check,
   X,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Mail,
+  Send
 } from 'lucide-react';
 
 export type TimeframeFilter = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'ytd';
@@ -77,6 +79,16 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
   const [showPOModal, setShowPOModal] = useState(false);
   const [showVendorModal, setShowVendorModal] = useState(false);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
+
+  // PO Email Dispatch Modal State
+  const [emailModalPO, setEmailModalPO] = useState<{
+    po: PurchaseOrder;
+    vendorEmail: string;
+    quoteRef?: string;
+    leadTimeDays?: number;
+  } | null>(null);
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
 
   // Initial local state / persistent storage
   const [vendors, setVendors] = useState<Vendor[]>(() => {
@@ -285,9 +297,69 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
       createdAt: new Date().toISOString().substring(0, 10),
       approvedBy: currentEmployee?.name || 'Managing Director'
     };
+
     setPos([newPOEntry, ...pos]);
     setQuotes(quotes.map(q => q.id === quote.id ? { ...q, status: 'Accepted' } : q));
-    alert(`Converted ${quote.quoteRef} into Approved Purchase Order ${poNum}`);
+
+    const vendorObj = vendors.find(v => v.name.toLowerCase() === quote.vendorName.toLowerCase());
+    const recipientEmail = vendorObj?.email || 'orders@supplier.co.uk';
+
+    const vat = quote.totalAmount * 0.2;
+    const gross = quote.totalAmount + vat;
+
+    const defaultSubject = `Official Purchase Order: ${poNum} - Biscuit Logistics [Ref: ${quote.quoteRef}]`;
+    const defaultBody = `Dear ${vendorObj?.contact || quote.vendorName} Sales Team,
+
+Please accept this official Purchase Order based on your accepted quotation tender ${quote.quoteRef}.
+
+--------------------------------------------------
+PURCHASE ORDER DETAILS
+--------------------------------------------------
+PO Number:        ${poNum}
+Quote Reference:  ${quote.quoteRef}
+Supplier:         ${quote.vendorName}
+Date of Order:    ${new Date().toISOString().substring(0, 10)}
+Authorised By:    ${currentEmployee?.name || 'Managing Director'} (Managing Director / Procurement)
+
+ORDERED SPECIFICATIONS:
+- Item / Description: ${quote.item}
+- Quantity:            ${quote.quantity} units
+- Quoted Unit Price:   £${quote.unitPrice.toFixed(2)}
+- Net Subtotal:        £${quote.totalAmount.toFixed(2)}
+- 20% UK VAT:          £${vat.toFixed(2)}
+- Total Gross Due:     £${gross.toFixed(2)}
+- Agreed Lead Time:    ${quote.leadTimeDays} business days
+
+DELIVERY LOCATION & BOOKING:
+Biscuit Central Depot
+Goods Inwards Bay 3
+Leeds, West Yorkshire
+
+Please confirm receipt of this purchase order and advise estimated delivery dispatch date.
+
+Kind regards,
+${currentEmployee?.name || 'Managing Director'}
+Procurement & Supply Chain Operations
+Biscuit CRM`;
+
+    setEmailSubject(defaultSubject);
+    setEmailBody(defaultBody);
+    setEmailModalPO({
+      po: newPOEntry,
+      vendorEmail: recipientEmail,
+      quoteRef: quote.quoteRef,
+      leadTimeDays: quote.leadTimeDays
+    });
+  };
+
+  const handleTransmitAndArchivePO = () => {
+    if (!emailModalPO) return;
+    const { po } = emailModalPO;
+
+    // Archive and update PO status to Sent / Archived in Audit
+    setPos(pos.map(p => p.id === po.id ? { ...p, status: 'Sent' } : p));
+    setEmailModalPO(null);
+    setActiveTab('audit');
   };
 
   const handleRegisterVendor = (e: React.FormEvent) => {
@@ -377,7 +449,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
       <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-slate-950 border border-slate-800 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-            <Building2 className="w-5 h-5" />
+            <Building2 className="w-5 h-5"/>
           </div>
           <div>
             <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
@@ -397,25 +469,25 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
             onClick={handleExportProcurementReport}
             className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold inline-flex items-center gap-1.5 shadow transition"
           >
-            <Download className="w-3.5 h-3.5 text-indigo-400" /> Export Audit Report
+            <Download className="w-3.5 h-3.5 text-indigo-400"/> Export Audit Report
           </button>
           <button
             onClick={() => setShowQuoteModal(true)}
             className="px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold inline-flex items-center gap-1.5 transition shadow"
           >
-            <Plus className="w-3.5 h-3.5" /> Log Received Quote
+            <Plus className="w-3.5 h-3.5"/> Log Received Quote
           </button>
           <button
             onClick={() => setShowVendorModal(true)}
             className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold inline-flex items-center gap-1.5 transition"
           >
-            <Plus className="w-3.5 h-3.5" /> Register Vendor
+            <Plus className="w-3.5 h-3.5"/> Register Vendor
           </button>
           <button
             onClick={() => setShowPOModal(true)}
             className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow transition"
           >
-            <Plus className="w-3.5 h-3.5" /> Raise Purchase Order
+            <Plus className="w-3.5 h-3.5"/> Raise Purchase Order
           </button>
         </div>
       </div>
@@ -442,7 +514,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
                     : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800'
                 }`}
               >
-                <Icon className="w-3.5 h-3.5" />
+                <Icon className="w-3.5 h-3.5"/>
                 {tab.label}
               </button>
             );
@@ -451,7 +523,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
 
         {/* Multi-Timeframe Filter Pill: Day, Week, Month, Quarter, Year, YTD */}
         <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
-          <Calendar className="w-3.5 h-3.5 text-slate-500 ml-2" />
+          <Calendar className="w-3.5 h-3.5 text-slate-500 ml-2"/>
           {[
             { id: 'day', label: 'Day (Today)' },
             { id: 'week', label: 'Week' },
@@ -480,7 +552,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
         <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
           <div className="flex items-center justify-between text-slate-400 text-xs">
             <span>Committed PO Spend</span>
-            <DollarSign className="w-4 h-4 text-rose-400" />
+            <DollarSign className="w-4 h-4 text-rose-400"/>
           </div>
           <div className="text-2xl font-black text-rose-400 font-mono">
             £{totalPOSpend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -493,7 +565,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
         <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
           <div className="flex items-center justify-between text-slate-400 text-xs">
             <span>Received Quotes Tender</span>
-            <Layers className="w-4 h-4 text-amber-400" />
+            <Layers className="w-4 h-4 text-amber-400"/>
           </div>
           <div className="text-2xl font-black text-amber-400 font-mono">
             £{totalQuotesValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -506,7 +578,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
         <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
           <div className="flex items-center justify-between text-slate-400 text-xs">
             <span>Active Suppliers Audited</span>
-            <Building className="w-4 h-4 text-sky-400" />
+            <Building className="w-4 h-4 text-sky-400"/>
           </div>
           <div className="text-2xl font-black text-sky-400 font-mono">
             {activeVendorsCount} Vendors
@@ -517,7 +589,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
         <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
           <div className="flex items-center justify-between text-slate-400 text-xs">
             <span>Avg Order Commitment</span>
-            <TrendingDown className="w-4 h-4 text-emerald-400" />
+            <TrendingDown className="w-4 h-4 text-emerald-400"/>
           </div>
           <div className="text-2xl font-black text-emerald-400 font-mono">
             £{(filteredPOs.length > 0 ? totalPOSpend / filteredPOs.length : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -531,7 +603,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
         <div className="flex items-center gap-3 w-full md:w-auto flex-1">
           {/* Item / Part Number / Keyword Search */}
           <div className="relative flex-1 max-w-sm">
-            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5"/>
             <input
               type="text"
               placeholder="Filter by item, spec or description..."
@@ -543,7 +615,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
 
           {/* Vendor Filter Dropdown */}
           <div className="flex items-center gap-1.5">
-            <Filter className="w-3.5 h-3.5 text-slate-500" />
+            <Filter className="w-3.5 h-3.5 text-slate-500"/>
             <select
               value={selectedVendorFilter}
               onChange={(e) => setSelectedVendorFilter(e.target.value)}
@@ -699,7 +771,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
                         onClick={() => handleConvertQuoteToPO(q)}
                         className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] inline-flex items-center gap-1 shadow transition"
                       >
-                        <Check className="w-3 h-3" /> Convert to PO
+                        <Check className="w-3 h-3"/> Convert to PO
                       </button>
                     )}
                   </td>
@@ -760,7 +832,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
         <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-bold text-white flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" /> Statutory Procurement Audit Trail
+              <ShieldCheck className="w-4 h-4 text-emerald-400"/> Statutory Procurement Audit Trail
             </h4>
             <span className="text-xs font-mono text-slate-400">
               Audit Period: {timeframe.toUpperCase()}
@@ -772,7 +844,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
               <div key={p.id} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                    <FileText className="w-4 h-4" />
+                    <FileText className="w-4 h-4"/>
                   </div>
                   <div>
                     <div className="font-bold text-white flex items-center gap-2">
@@ -803,12 +875,12 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
             <div className="flex items-start justify-between border-b border-slate-800 pb-3">
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Plus className="w-4 h-4 text-indigo-400" /> Raise Authorized Purchase Order
+                  <Plus className="w-4 h-4 text-indigo-400"/> Raise Authorized Purchase Order
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">Directly commitments inventory to warehouse receiving.</p>
               </div>
               <button onClick={() => setShowPOModal(false)} className="text-slate-400 hover:text-white p-1">
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5"/>
               </button>
             </div>
 
@@ -909,12 +981,12 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
             <div className="flex items-start justify-between border-b border-slate-800 pb-3">
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <FileSpreadsheet className="w-4 h-4 text-amber-400" /> Log Supplier Quote Tender
+                  <FileSpreadsheet className="w-4 h-4 text-amber-400"/> Log Supplier Quote Tender
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">Record received quotes for pricing audit comparison.</p>
               </div>
               <button onClick={() => setShowQuoteModal(false)} className="text-slate-400 hover:text-white p-1">
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5"/>
               </button>
             </div>
 
@@ -1038,12 +1110,12 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
             <div className="flex items-start justify-between border-b border-slate-800 pb-3">
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Building className="w-4 h-4 text-indigo-400" /> Onboard Authorized Supplier
+                  <Building className="w-4 h-4 text-indigo-400"/> Onboard Authorized Supplier
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">Register vendor details and payment settlement terms.</p>
               </div>
               <button onClick={() => setShowVendorModal(false)} className="text-slate-400 hover:text-white p-1">
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5"/>
               </button>
             </div>
 
@@ -1125,6 +1197,105 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: PURCHASE ORDER EMAIL POPUP & AUDIT ARCHIVE */}
+      {emailModalPO && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Mail className="w-5 h-5 text-indigo-400"/> Dispatch Purchase Order to Supplier
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Confirm email transmission for <span className="text-indigo-400 font-mono font-bold">{emailModalPO.po.poNumber}</span> & archive to audit trail.
+                </p>
+              </div>
+              <button onClick={() => setEmailModalPO(null)} className="text-slate-400 hover:text-white p-1">
+                <X className="w-5 h-5"/>
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Vendor Recipient</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={`${emailModalPO.po.vendorName} (${emailModalPO.vendorEmail})`}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-400 cursor-not-allowed"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Total Authorized Value</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={`£${emailModalPO.po.amount.toFixed(2)} Net (£${(emailModalPO.po.amount * 1.2).toFixed(2)} Gross)`}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-emerald-400 font-mono font-bold cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Subject Line</label>
+                <input
+                  type="text"
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Email Body & Purchase Specifications</label>
+                <textarea
+                  rows={9}
+                  value={emailBody}
+                  onChange={(e) => setEmailBody(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono leading-relaxed"
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
+                <span className="text-slate-400 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400"/> Archiving to Spend Audit Trail upon transmission
+                </span>
+                <span className="font-mono text-purple-300 font-bold">
+                  Ref: {emailModalPO.quoteRef || 'Direct Tender'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <a
+                href={`mailto:${emailModalPO.vendorEmail}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs inline-flex items-center gap-1.5 transition"
+              >
+                <Send className="w-3.5 h-3.5 text-sky-400"/> Open in Email App (mailto)
+              </a>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEmailModalPO(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTransmitAndArchivePO}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow transition"
+                >
+                  <CheckCircle2 className="w-4 h-4"/> Transmit & Archive for Audit
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
