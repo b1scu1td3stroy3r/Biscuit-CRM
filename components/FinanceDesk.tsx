@@ -80,7 +80,7 @@ export default function FinanceDesk({
   employees = []
 }: FinanceDeskProps) {
   // Navigation & View Filters
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'credit_control' | 'payments' | 'payroll' | 'ledger' | 'tax_hmrc'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'credit_control' | 'payments' | 'payables' | 'payroll' | 'ledger' | 'tax_hmrc'>('dashboard');
   const [timeframe, setTimeframe] = useState<TimeframeFilter>('month');
   const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -153,6 +153,28 @@ export default function FinanceDesk({
     amount: '',
     reference: '',
     method: 'Bank Transfer' as 'Bank Transfer' | 'BACS / Direct Debit'
+  });
+
+  // Supplier Invoices & Payables State
+  const [payingTransaction, setPayingTransaction] = useState<FinancialTransaction | null>(null);
+  const [payMethod, setPayMethod] = useState<'Bank Transfer' | 'Corporate Card'>('Bank Transfer');
+  const [cardDetails, setCardDetails] = useState({
+    cardLast4: '4192',
+    cardHolder: 'Managing Director (Biscuit CRM Operating)',
+    authCode: ''
+  });
+  const [bankDetails, setBankDetails] = useState({
+    sortCode: '20-45-77',
+    accountNumber: '88392019',
+    remittanceRef: ''
+  });
+  const [isNewInvoiceModalOpen, setIsNewInvoiceModalOpen] = useState(false);
+  const [newInvoiceForm, setNewInvoiceForm] = useState({
+    vendorName: '',
+    invoiceNumber: '',
+    poReference: '',
+    netAmount: '',
+    paymentTerms: 'Net 30'
   });
 
   // Local Storage Ledger & Credit Notes
@@ -548,6 +570,86 @@ export default function FinanceDesk({
   };
 
   // Mark invoice settled via direct BACS or Bank Transfer
+  // Settle a Pending Supplier Payable / Invoice
+  const handleSettleSupplierInvoice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!payingTransaction) return;
+
+    const methodUsed = payMethod === 'Corporate Card' ? 'Corporate Card' : 'Bank Transfer';
+    const refCode = payMethod === 'Corporate Card' 
+      ? `CARD-${cardDetails.authCode || Math.floor(1000 + Math.random() * 9000)}` 
+      : (bankDetails.remittanceRef || `BACS-${payingTransaction.reference}`);
+
+    // Update transaction to Settled
+    setTransactions(prev => prev.map(t => {
+      if (t.id === payingTransaction.id) {
+        return {
+          ...t,
+          status: 'Settled',
+          paymentMethod: methodUsed as any,
+          reference: `${t.reference} (${refCode})`,
+          timestamp: new Date().toISOString()
+        };
+      }
+      return t;
+    }));
+
+    // Post to Newsfeed
+    try {
+      await db.newsFeed.add({
+        title: `INVOICE PAID: ${payingTransaction.counterparty}`,
+        content: `Finance disbursed £${payingTransaction.grossAmount.toFixed(2)} via ${methodUsed} [Ref: ${refCode}] for supplier bill ${payingTransaction.reference}.`,
+        category: 'Invoice Settlement',
+        department: 'Finance',
+        actor: currentUser,
+        badgeColor: 'border-emerald-500/30 text-emerald-300 bg-emerald-500/10',
+        createdAt: new Date().toISOString()
+      });
+    } catch (err) {
+      console.warn(err);
+    }
+
+    setPayingTransaction(null);
+    alert(`✅ Invoice settled: £${payingTransaction.grossAmount.toFixed(2)} paid to ${payingTransaction.counterparty} via ${methodUsed}.`);
+  };
+
+  // Add Manual Received Supplier Invoice
+  const handleAddReceivedInvoice = (e: React.FormEvent) => {
+    e.preventDefault();
+    const net = parseFloat(newInvoiceForm.netAmount);
+    if (isNaN(net) || net <= 0 || !newInvoiceForm.vendorName) {
+      alert('Please provide a valid vendor and amount.');
+      return;
+    }
+
+    const vat = net * 0.20;
+    const gross = net + vat;
+    const invRef = newInvoiceForm.invoiceNumber || `INV-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    recordTransaction({
+      type: 'outgoing',
+      category: 'Supplier Payable',
+      reference: `${invRef} [PO: ${newInvoiceForm.poReference || 'Direct'}]`,
+      counterparty: newInvoiceForm.vendorName,
+      grossAmount: gross,
+      vatAmount: vat,
+      netAmount: net,
+      status: 'Pending',
+      paymentMethod: 'Bank Transfer',
+      timestamp: new Date().toISOString()
+    });
+
+    setIsNewInvoiceModalOpen(false);
+    setNewInvoiceForm({
+      vendorName: '',
+      invoiceNumber: '',
+      poReference: '',
+      netAmount: '',
+      paymentTerms: 'Net 30'
+    });
+    alert('✅ Supplier invoice received and queued for payment.');
+  };
+
   const handleMarkDirectSettled = async (contact: Contact) => {
     if (!contact.id) return;
     const amt = Number(contact.dealValue) || 0;
@@ -734,6 +836,7 @@ export default function FinanceDesk({
             { id: 'dashboard', label: 'Financial Dashboard', icon: TrendingUp },
             { id: 'credit_control', label: 'Credit Control & Terms', icon: ShieldCheck },
             { id: 'payments', label: 'Receive Incomings', icon: ArrowDownLeft },
+            { id: 'payables', label: 'Received Invoices & Payables', icon: ArrowUpRight },
             { id: 'payroll', label: 'Staff Payroll & Outgoings', icon: Users },
             { id: 'ledger', label: 'Granular Audit Ledger', icon: FileSpreadsheet },
             { id: 'tax_hmrc', label: 'Tax & HMRC (MTD)', icon: Building2 }
@@ -1139,6 +1242,167 @@ export default function FinanceDesk({
           </div>
         </div>
       )}
+
+            {/* VIEW: RECEIVED SUPPLIER INVOICES & PAYABLES */}
+      {activeTab === 'payables' && (() => {
+        const supplierPayables = transactions.filter(t => t.category === 'Supplier Payable' || t.category === 'Shipping Courier');
+        const pendingPayables = supplierPayables.filter(t => t.status === 'Pending');
+        const settledPayables = supplierPayables.filter(t => t.status === 'Settled');
+
+        return (
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                  <ArrowUpRight className="w-4 h-4 text-rose-400" /> Received Supplier Invoices & Payables Desk
+                </h4>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Manage received vendor invoices, execute BACS or Corporate Card disbursements, and reconcile PO commitments.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsNewInvoiceModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow transition"
+              >
+                <Plus className="w-4 h-4" /> Log Received Supplier Invoice
+              </button>
+            </div>
+
+            {/* Quick Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+                <span className="text-slate-400 text-xs">Pending Supplier Bills</span>
+                <div className="text-2xl font-black text-amber-400 font-mono">
+                  {pendingPayables.length} Invoices
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Total Outstanding: £{pendingPayables.reduce((s, p) => s + p.grossAmount, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+                <span className="text-slate-400 text-xs">Settled Supplier Invoices</span>
+                <div className="text-2xl font-black text-emerald-400 font-mono">
+                  {settledPayables.length} Paid
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Disbursed: £{settledPayables.reduce((s, p) => s + p.grossAmount, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+                <span className="text-slate-400 text-xs">Reclaimable Input VAT</span>
+                <div className="text-2xl font-black text-indigo-400 font-mono">
+                  £{supplierPayables.reduce((s, p) => s + p.vatAmount, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </div>
+                <p className="text-[11px] text-slate-500">Credited against HMRC VAT return</p>
+              </div>
+            </div>
+
+            {/* Invoices Awaiting Payment Table */}
+            <div className="space-y-3">
+              <h5 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" /> Invoices Awaiting Payment Clearance ({pendingPayables.length})
+              </h5>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-800">
+                <table className="w-full text-left text-xs text-slate-300">
+                  <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                    <tr>
+                      <th className="py-3 px-4">Invoice / PO Ref</th>
+                      <th className="py-3 px-4">Supplier / Payee</th>
+                      <th className="py-3 px-4 text-right">Net (£)</th>
+                      <th className="py-3 px-4 text-right">20% VAT (£)</th>
+                      <th className="py-3 px-4 text-right">Gross Due (£)</th>
+                      <th className="py-3 px-4 text-center">Status</th>
+                      <th className="py-3 px-4">Received Date</th>
+                      <th className="py-3 px-4 text-right">Payment Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 bg-slate-900/60 font-mono">
+                    {pendingPayables.map(tx => (
+                      <tr key={tx.id} className="hover:bg-slate-800/40 transition">
+                        <td className="py-3 px-4 font-bold text-purple-300">{tx.reference}</td>
+                        <td className="py-3 px-4 font-sans font-bold text-white">{tx.counterparty}</td>
+                        <td className="py-3 px-4 text-right text-slate-200">£{tx.netAmount.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right text-slate-400">£{tx.vatAmount.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right font-black text-rose-400">£{tx.grossAmount.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-center font-sans">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold border bg-amber-500/20 text-amber-300 border-amber-500/30">
+                            Awaiting Payment
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-slate-400 font-sans">{tx.timestamp.substring(0, 10)}</td>
+                        <td className="py-3 px-4 text-right space-x-2 font-sans">
+                          <button
+                            onClick={() => {
+                              setPayingTransaction(tx);
+                              setPayMethod('Bank Transfer');
+                              setBankDetails({
+                                sortCode: '20-45-77',
+                                accountNumber: '88392019',
+                                remittanceRef: `BACS-${tx.reference.substring(0, 12)}`
+                              });
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] inline-flex items-center gap-1 shadow transition"
+                          >
+                            <Building2 className="w-3 h-3" /> Pay Invoice
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {pendingPayables.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="py-8 text-center text-slate-500 font-sans">
+                          All received supplier invoices have been cleared and paid.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Settled Supplier Invoices History */}
+            <div className="space-y-3 pt-4">
+              <h5 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Settled Supplier Payments ({settledPayables.length})
+              </h5>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-800">
+                <table className="w-full text-left text-xs text-slate-300">
+                  <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                    <tr>
+                      <th className="py-3 px-4">Payment Date</th>
+                      <th className="py-3 px-4">Invoice / PO Ref</th>
+                      <th className="py-3 px-4">Supplier</th>
+                      <th className="py-3 px-4">Method</th>
+                      <th className="py-3 px-4 text-right">Gross Paid</th>
+                      <th className="py-3 px-4 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 bg-slate-900/60 font-mono">
+                    {settledPayables.map(tx => (
+                      <tr key={tx.id} className="hover:bg-slate-800/40">
+                        <td className="py-3 px-4 text-slate-400 font-sans">{tx.timestamp.substring(0, 10)}</td>
+                        <td className="py-3 px-4 font-bold text-slate-200">{tx.reference}</td>
+                        <td className="py-3 px-4 font-sans font-semibold text-white">{tx.counterparty}</td>
+                        <td className="py-3 px-4 font-sans text-slate-300">{tx.paymentMethod}</td>
+                        <td className="py-3 px-4 text-right font-bold text-emerald-400">£{tx.grossAmount.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-center font-sans">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold border bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
+                            Paid & Reconciled
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* VIEW 4: STAFF PAYROLL & DISBURSEMENTS */}
       {activeTab === 'payroll' && (
@@ -1587,6 +1851,261 @@ export default function FinanceDesk({
           </div>
         );
       })()}
+
+      {/* MODAL: PAY SUPPLIER INVOICE (CARD OR BANK TRANSFER) */}
+      {payingTransaction && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-emerald-400" /> Disburse Supplier Invoice Payment
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Paying <span className="text-white font-bold">{payingTransaction.counterparty}</span> &bull; {payingTransaction.reference}
+                </p>
+              </div>
+              <button onClick={() => setPayingTransaction(null)} className="text-slate-400 hover:text-white p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Payment Method Selector */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setPayMethod('Bank Transfer')}
+                className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition ${
+                  payMethod === 'Bank Transfer'
+                    ? 'bg-purple-600/20 border-purple-500 text-white'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                <Building2 className="w-4 h-4 text-purple-400" />
+                <div>
+                  <div className="text-xs font-bold">Bank Transfer / BACS</div>
+                  <div className="text-[10px] text-slate-400">Faster Payments remitted</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPayMethod('Corporate Card')}
+                className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition ${
+                  payMethod === 'Corporate Card'
+                    ? 'bg-purple-600/20 border-purple-500 text-white'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                <CreditCard className="w-4 h-4 text-emerald-400" />
+                <div>
+                  <div className="text-xs font-bold">Corporate Card</div>
+                  <div className="text-[10px] text-slate-400">Visa / Mastercard debit</div>
+                </div>
+              </button>
+            </div>
+
+            <form onSubmit={handleSettleSupplierInvoice} className="space-y-4">
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1 text-xs">
+                <div className="flex justify-between text-slate-400">
+                  <span>Net Payable Amount:</span>
+                  <span className="font-mono text-white">£{payingTransaction.netAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-slate-400">
+                  <span>20% Input VAT:</span>
+                  <span className="font-mono text-slate-300">£{payingTransaction.vatAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between font-bold pt-1 border-t border-slate-800 text-white">
+                  <span>Total Gross Disbursement:</span>
+                  <span className="font-mono text-emerald-400 text-sm">£{payingTransaction.grossAmount.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {payMethod === 'Bank Transfer' ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">Supplier Sort Code</label>
+                      <input
+                        type="text"
+                        required
+                        value={bankDetails.sortCode}
+                        onChange={(e) => setBankDetails({ ...bankDetails, sortCode: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono focus:outline-none focus:border-purple-400 text-center"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">Account Number</label>
+                      <input
+                        type="text"
+                        required
+                        value={bankDetails.accountNumber}
+                        onChange={(e) => setBankDetails({ ...bankDetails, accountNumber: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono focus:outline-none focus:border-purple-400 text-center"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Remittance Reference</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. BACS-PO-2026-003"
+                      value={bankDetails.remittanceRef}
+                      onChange={(e) => setBankDetails({ ...bankDetails, remittanceRef: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono focus:outline-none focus:border-purple-400"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Corporate Cardholder</label>
+                    <input
+                      type="text"
+                      disabled
+                      value={cardDetails.cardHolder}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-300 font-mono cursor-not-allowed"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">Card Ending In</label>
+                      <input
+                        type="text"
+                        disabled
+                        value={`•••• •••• •••• ${cardDetails.cardLast4}`}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-300 font-mono cursor-not-allowed"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">Bank Auth Code (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="AUTH-9281"
+                        value={cardDetails.authCode}
+                        onChange={(e) => setCardDetails({ ...cardDetails, authCode: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPayingTransaction(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow"
+                >
+                  <CheckCircle2 className="w-4 h-4" /> Authorize & Clear £{payingTransaction.grossAmount.toFixed(2)}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: LOG RECEIVED SUPPLIER INVOICE */}
+      {isNewInvoiceModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-purple-400" /> Log Received Supplier Invoice
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Record supplier PDF bill to queue for Finance settlement and VAT reclaim.
+                </p>
+              </div>
+              <button onClick={() => setIsNewInvoiceModalOpen(false)} className="text-slate-400 hover:text-white p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddReceivedInvoice} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Supplier / Vendor Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Apex Packaging Ltd"
+                  value={newInvoiceForm.vendorName}
+                  onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, vendorName: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Supplier Invoice No.</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="INV-94812"
+                    value={newInvoiceForm.invoiceNumber}
+                    onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, invoiceNumber: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono focus:outline-none focus:border-purple-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Matching PO Number</label>
+                  <input
+                    type="text"
+                    placeholder="PO-2026-003"
+                    value={newInvoiceForm.poReference}
+                    onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, poReference: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono focus:outline-none focus:border-purple-400"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Net Invoice Amount (£)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  placeholder="e.g. 1400.00"
+                  value={newInvoiceForm.netAmount}
+                  onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, netAmount: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-purple-400"
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono flex justify-between">
+                <span className="text-slate-400">Total with 20% VAT:</span>
+                <span className="text-emerald-400 font-bold">
+                  £{((parseFloat(newInvoiceForm.netAmount) || 0) * 1.2).toFixed(2)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsNewInvoiceModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow"
+                >
+                  Queue for Payment
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL 1: COMPANIES HOUSE LOOKUP & INSOLVENCY CHECK */}
       {chSelectedContact && (

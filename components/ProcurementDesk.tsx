@@ -378,6 +378,23 @@ Biscuit Central Depot
 Goods Inwards Bay 3
 Leeds, West Yorkshire
 
+--------------------------------------------------
+INVOICE SUBMISSION INSTRUCTIONS (MANDATORY FORMAT)
+--------------------------------------------------
+To ensure prompt processing and automated 3-way matching, please submit your tax invoice adhering to the following criteria:
+
+1. Submission Email: Send PDF invoices to: invoices@biscuitcrm.co.uk
+2. Subject Line: Must state: [INVOICE] - [Supplier Name] - PO Reference: ${poNum}
+3. Mandatory Invoice Elements:
+   • Official Purchase Order Number clearly printed: ${poNum}
+   • Supplier Legal Name, Registered Address & UK VAT Number
+   • Itemized Description matching PO lines: "${quote.item}"
+   • Net Subtotal, 20% VAT Breakdown & Total Gross matching agreed quote £${gross.toFixed(2)}
+   • Bank Remittance Details: Bank Name, Sort Code, Account Number (or IBAN/BIC)
+   • Settlement Terms: As agreed (${vendorObj?.paymentTerms || 'Net 30'})
+
+Note: Invoices received without a valid Purchase Order number or with mismatched quantities will be rejected back to accounts payable.
+
 Please confirm receipt of this purchase order and advise estimated delivery dispatch date.
 
 Kind regards,
