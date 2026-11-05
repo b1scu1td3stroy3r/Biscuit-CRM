@@ -2,6 +2,8 @@
 import ProcurementDesk from '../components/ProcurementDesk';
 import OperationsDesk from '../components/OperationsDesk';
 import CustomerServicesDesk from '../components/CustomerServicesDesk';
+import OnboardingWizard from '../components/OnboardingWizard';
+import { scheduleBiscuitSync } from '../packages/storage/src/biscuitSync';
 import '../lib/cloudGuard';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
