@@ -1,6 +1,7 @@
 'use client';
 import ProcurementDesk from '../components/ProcurementDesk';
 import OperationsDesk from '../components/OperationsDesk';
+import CustomerServicesDesk from '../components/CustomerServicesDesk';
 import '../lib/cloudGuard';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -1296,6 +1297,19 @@ export default function Dashboard() {
           </button>
             </>
           )}
+
+        {(isMD || department === 'Customer Services' || allowedTabs.includes('customer-services')) && (
+          <button
+            onClick={() => setViewMode('customer-services' as any)}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${
+              viewMode === ('customer-services' as any)
+                ? 'bg-amber-500 text-slate-950 font-bold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Headphones className="w-3.5 h-3.5 text-teal-400" /> CS Support & Desk
+          </button>
+        )}
 
         {(isMD || department === 'Operations' || allowedTabs.includes('operations')) && (
           <button
