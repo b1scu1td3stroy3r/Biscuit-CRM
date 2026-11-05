@@ -373,7 +373,7 @@ export default function OrgRosterDesk({ currentRepName, userRole, contacts, onDa
                 <label className="text-xs font-semibold text-slate-400 block mb-1">Full Name</label>
                 <input
                   type="text"
-                  placeholder="e.g. Rachel Bennett"
+                  placeholder="e.g. Alex Morgan"
                   value={newHire.name}
                   onChange={(e) => setNewHire({ ...newHire, name: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100"
