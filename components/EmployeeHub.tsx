@@ -111,8 +111,8 @@ export default function EmployeeHub({
   });
 
   const [selectedContactForHandover, setSelectedContactForHandover] = useState<string>('');
-  const [handoverCoverRep, setHandoverCoverRep] = useState('David Miller');
-  const [handoverCoverEmail, setHandoverCoverEmail] = useState('david.miller@biscuitcrm.internal');
+  const [handoverCoverRep, setHandoverCoverRep] = useState('');
+  const [handoverCoverEmail, setHandoverCoverEmail] = useState('');
   const [handoverNotes, setHandoverNotes] = useState('');
   const [handoverSuccess, setHandoverSuccess] = useState(false);
   const [lastTransferredContact, setLastTransferredContact] = useState<Contact | null>(null);
@@ -743,7 +743,7 @@ export default function EmployeeHub({
                     type="text"
                     value={handoverCoverRep}
                     onChange={(e) => setHandoverCoverRep(e.target.value)}
-                    placeholder="e.g. David Miller"
+                    placeholder="e.g. Nominated Colleague"
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
                     required
                   />

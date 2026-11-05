@@ -66,7 +66,7 @@ export default function DataImportWizard({ onImportComplete, currentUser }: Data
     } else {
       const sampleCSV = 
 `Full Name,Job Title,Department,Hierarchy Tier
-"David Miller","Senior Account Rep","Sales","Staff"
+"Alex Smith","Commercial Executive","Sales","Staff"
 "Sarah Jenkins","Commercial Lead","Sales","Team Leader"
 "Liam Hughes","Fulfillment Director","Operations","Manager"
 "Elena Rostova","Head of Accounts","Finance","Staff"

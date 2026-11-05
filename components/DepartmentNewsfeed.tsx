@@ -45,7 +45,7 @@ export default function DepartmentNewsfeed({
       const all = await db.newsFeed.toArray();
       for (const item of all) {
         if (
-          item.title?.includes('David Miller') ||
+          
           item.title?.includes('£14,400') ||
           item.title?.includes('Sophie Taylor') ||
           item.title?.includes('Dyson Procurement') ||
