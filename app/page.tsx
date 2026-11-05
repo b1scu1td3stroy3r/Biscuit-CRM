@@ -1,10 +1,11 @@
 'use client';
 import ProcurementDesk from '../components/ProcurementDesk';
 import OperationsDesk from '../components/OperationsDesk';
-import { canAccessCloudAndDataSettings } from '../lib/cloudGuard';
+import '../lib/cloudGuard';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { 
+import {
+  Package, 
   ShieldCheck, Zap, Database, Building2, Headphones, Calendar as CalendarIcon, 
   FileText, CheckCircle2, Loader2, FolderCheck, Plus, Search, 
   RefreshCw, ExternalLink, ChevronRight, ChevronLeft, ArrowRight, LayoutGrid, List, Clock,
@@ -13,13 +14,23 @@ import {
   Target, RotateCcw, Laptop, Briefcase, HeartHandshake, Megaphone, Wrench, PoundSterling, Crown,
   Lock, Phone, PhoneCall, Upload, Flame, Sparkles, LogOut
 } from 'lucide-react';
-import { db, Contact, ProjectTask, StoredTemplate, AuditRecord, DepartmentRole, EmployeeProfile, NewsItem } from '../packages/storage/src/db';
-import { syncOutboxToGoogleSheets, pullContactsFromGoogleSheet } from '../packages/storage/src/sheetsSync';
+import {
+  db,
+  DepartmentRole,
+  Contact,
+  ProjectTask,
+  StoredTemplate,
+  AuditRecord,
+  EmployeeProfile,
+  OrgStructureType
+} from '../packages/storage/src/db';
+import { syncOutboxToGoogleSheets } from '../packages/storage/src/sheetsSync';
 import { syncTaskToGoogleCalendar } from '../packages/storage/src/calendarSync';
 import { logAuditEvent } from '../packages/storage/src/auditLogger';
 import { exportPipelineToCSV, exportAuditLogsToCSV } from '../packages/storage/src/exportUtils';
 import { DEFAULT_TEMPLATES, replaceTokens, TemplateItem } from '../packages/templates/src/templates';
-import { resolveUserWorkspace, UserWorkspaceConfig } from '../packages/storage/src/workspaceManager';
+import {
+  resolveUserWorkspace, UserWorkspaceConfig } from '../packages/storage/src/workspaceManager';
 import CommandPalette from '../components/CommandPalette';
 import HealthWizard from '../components/HealthWizard';
 import DealDetailDrawer from '../components/DealDetailDrawer';
@@ -31,7 +42,6 @@ import MailchimpDesk from '../components/MailchimpDesk';
 import DataImportWizard from '../components/DataImportWizard';
 import DepartmentNewsfeed from '../components/DepartmentNewsfeed';
 import { scopeContactsByOrg } from '../packages/storage/src/orgEngine';
-import { OrgStructureType } from '../packages/storage/src/db';
 
 declare global {
   interface Window {
@@ -196,6 +206,90 @@ const stageMatchesCol = (cStage: string, colId: string | number) => {
 };
 
 export default function Dashboard() {
+  // Sales Order Generator State
+  const [salesOrderContact, setSalesOrderContact] = useState<any | null>(null);
+  const [soItems, setSoItems] = useState<{ itemId: string; name: string; quantity: number; unitPrice: number; location: string }[]>([
+    { itemId: '', name: '', quantity: 1, unitPrice: 0, location: 'Bay 1 - Rack A' }
+  ]);
+  const [soPaymentRoute, setSoPaymentRoute] = useState<'Invoice Terms' | 'Immediate Card'>('Invoice Terms');
+
+  // Create Sales Order & Reserve Inventory Lines
+  const handleCreateSalesOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!salesOrderContact) return;
+
+    const totalVal = soItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0);
+    const orderNum = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    try {
+      const inv = JSON.parse(localStorage.getItem('biscuit_crm_inventory') || '[]');
+      const updatedInv = inv.map((invItem: any) => {
+        const matchingSOItem = soItems.find(si => si.name.toLowerCase() === invItem.item.toLowerCase() || invItem.id === si.itemId);
+        if (matchingSOItem) {
+          const newReserved = (invItem.reserved || 0) + matchingSOItem.quantity;
+          return {
+            ...invItem,
+            reserved: newReserved,
+            available: Math.max(0, invItem.onHand - newReserved)
+          };
+        }
+        return invItem;
+      });
+      localStorage.setItem('biscuit_crm_inventory', JSON.stringify(updatedInv));
+    } catch (err) {
+      console.warn(err);
+    }
+
+    try {
+      const existingOrders = JSON.parse(localStorage.getItem('biscuit_crm_dispatch_orders') || '[]');
+      const newDispatchOrder = {
+        id: `DSP-${Date.now()}`,
+        orderNumber: orderNum,
+        customer: salesOrderContact.company || salesOrderContact.name,
+        destination: salesOrderContact.address || 'Standard Delivery Hub, UK',
+        weightKg: 15.0,
+        carrier: 'DPD Express',
+        trackingCode: `DPD-${Math.floor(1000000 + Math.random() * 9000000)}-GB`,
+        status: 'Ready for Picking',
+        items: soItems.map((si, idx) => ({
+          id: `item-${Date.now()}-${idx}`,
+          name: si.name,
+          quantity: si.quantity,
+          location: si.location || 'Bay 1 - Rack A',
+          status: 'Reserved'
+        }))
+      };
+      localStorage.setItem('biscuit_crm_dispatch_orders', JSON.stringify([newDispatchOrder, ...existingOrders]));
+    } catch (err) {
+      console.warn(err);
+    }
+
+    // Move Contact to Active Sales / Closed Deals stage
+    try {
+      setContacts(prev => prev.map(c => c.id === salesOrderContact.id ? { ...c, stage: 'Sales' } : c));
+      await db.contacts.update(salesOrderContact.id, { stage: 'Sales' });
+    } catch (err) {
+      console.warn('Could not update contact stage in db', err);
+    }
+
+    try {
+      await db.newsFeed.add({
+        title: `SALES ORDER RAISED: ${orderNum} for ${salesOrderContact.company || salesOrderContact.name}`,
+        content: `Sales team generated Sales Order ${orderNum} (£${totalVal.toFixed(2)}). Stock moved to 'Reserved' status and dispatched to Operations for picking. Payment method: ${soPaymentRoute}.`,
+        category: 'Sales Order',
+        department: 'Sales',
+        actor: 'Managing Director',
+        badgeColor: 'border-sky-500/30 text-sky-300 bg-sky-500/10',
+        createdAt: new Date().toISOString()
+      });
+    } catch (err) {
+      console.warn(err);
+    }
+
+    setSalesOrderContact(null);
+    setSoItems([{ itemId: '', name: '', quantity: 1, unitPrice: 0, location: 'Bay 1 - Rack A' }]);
+    alert(`✅ Sales Order ${orderNum} confirmed! Stock lines have entered 'Reserved' status and Operations has been notified for picking.`);
+  };
   const [department, setDepartment] = useState<DepartmentRole>('MD');
   const [token, setToken] = useState<string | null>(null);
   const [folderId, setFolderId] = useState<string>('');
@@ -1866,6 +1960,175 @@ export default function Dashboard() {
         onOpenNewMilestone={() => setIsTaskModalOpen(true)}
         onOpenNewTemplate={() => {}}
       />
+
+      {/* MODAL: SALES ORDER GENERATOR & STOCK RESERVATION */}
+      {salesOrderContact && (() => {
+        let availableInventory: any[] = [];
+        try {
+          availableInventory = JSON.parse(localStorage.getItem('biscuit_crm_inventory') || '[]');
+        } catch (e) {}
+
+        const orderSubtotal = soItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0);
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl p-6 space-y-4">
+              <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Package className="w-5 h-5 text-sky-400" /> Generate Official Sales Order
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Customer: <span className="text-white font-bold">{salesOrderContact.company || salesOrderContact.name}</span> &bull; Stock will be placed in <span className="text-amber-400 font-bold">'Reserved'</span> status upon creation.
+                  </p>
+                </div>
+                <button onClick={() => setSalesOrderContact(null)} className="text-slate-400 hover:text-white p-1">
+                  ✕
+                </button>
+              </div>
+
+              {/* Payment Route Selection */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">Settlement &amp; Invoicing Route</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSoPaymentRoute('Invoice Terms')}
+                    className={`p-3 rounded-xl border text-left text-xs font-bold transition ${
+                      soPaymentRoute === 'Invoice Terms'
+                        ? 'bg-purple-600/20 border-purple-500 text-purple-200'
+                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <div>Finance Invoices on Credit Terms</div>
+                    <div className="text-[10px] font-normal text-slate-500">Standard Net 30/60 Days</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSoPaymentRoute('Immediate Card')}
+                    className={`p-3 rounded-xl border text-left text-xs font-bold transition ${
+                      soPaymentRoute === 'Immediate Card'
+                        ? 'bg-emerald-600/20 border-emerald-500 text-emerald-200'
+                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <div>Immediate Card / Stripe Link</div>
+                    <div className="text-[10px] font-normal text-slate-500">Pre-payment or MOTO card terminal</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Multi-Line Items Table */}
+              <form onSubmit={handleCreateSalesOrder} className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-300">Sales Order Line Items</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const defaultItem = availableInventory[0] || { id: '', item: 'Custom Item', location: 'Bay 1' };
+                        setSoItems([...soItems, { itemId: defaultItem.id, name: defaultItem.item, quantity: 1, unitPrice: 20.0, location: defaultItem.location }]);
+                      }}
+                      className="text-xs text-sky-400 hover:text-sky-300 font-bold"
+                    >
+                      + Add Another Line
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {soItems.map((item, idx) => (
+                      <div key={idx} className="p-3 rounded-xl bg-slate-950 border border-slate-800 grid grid-cols-12 gap-2 items-center text-xs">
+                        <div className="col-span-5">
+                          <label className="text-[10px] text-slate-500 block mb-0.5">Stock Item</label>
+                          <select
+                            value={item.name}
+                            onChange={(e) => {
+                              const match = availableInventory.find(i => i.item === e.target.value);
+                              const updated = [...soItems];
+                              updated[idx] = {
+                                ...updated[idx],
+                                name: e.target.value,
+                                itemId: match?.id || '',
+                                location: match?.location || 'Bay 1 - Rack A'
+                              };
+                              setSoItems(updated);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-xs text-white"
+                          >
+                            {availableInventory.map(invItem => (
+                              <option key={invItem.id} value={invItem.item}>
+                                {invItem.item} (Avail: {invItem.available})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="col-span-2">
+                          <label className="text-[10px] text-slate-500 block mb-0.5">Qty</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const updated = [...soItems];
+                              updated[idx].quantity = parseInt(e.target.value) || 1;
+                              setSoItems(updated);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-xs text-white font-mono"
+                          />
+                        </div>
+
+                        <div className="col-span-3">
+                          <label className="text-[10px] text-slate-500 block mb-0.5">Unit Price (£)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={item.unitPrice}
+                            onChange={(e) => {
+                              const updated = [...soItems];
+                              updated[idx].unitPrice = parseFloat(e.target.value) || 0;
+                              setSoItems(updated);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-xs text-white font-mono"
+                          />
+                        </div>
+
+                        <div className="col-span-2 text-right">
+                          <label className="text-[10px] text-slate-500 block mb-0.5">Subtotal</label>
+                          <div className="font-mono font-bold text-white pt-1">
+                            £{(item.quantity * item.unitPrice).toFixed(2)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs font-mono">
+                  <span className="text-slate-400">Total Order Commitment:</span>
+                  <span className="text-emerald-400 font-black text-sm">£{orderSubtotal.toFixed(2)} Net (£{(orderSubtotal * 1.2).toFixed(2)} with VAT)</span>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setSalesOrderContact(null)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow inline-flex items-center gap-1.5"
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> Issue Sales Order &amp; Reserve Stock
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
 
       <HealthWizard
         isOpen={isHealthOpen}

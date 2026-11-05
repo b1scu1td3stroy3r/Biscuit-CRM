@@ -51,6 +51,8 @@ export interface PurchaseOrder {
   status: 'Draft' | 'Approved' | 'Sent' | 'Received' | 'Cancelled';
   createdAt: string;
   approvedBy?: string;
+  paymentType?: 'Finance Invoice' | 'Card Upfront';
+  isPaidUpfront?: boolean;
 }
 
 export interface StockItem {
@@ -160,7 +162,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
       }
     }
     return [
-      { id: 'po-1', poNumber: 'PO-2026-001', vendorName: 'Apex Packaging Ltd', item: 'Corrugated Boxes', description: '500x Corrugated Export Boxes', quantity: 500, unitPrice: 2.90, amount: 1450.00, status: 'Approved', createdAt: '2026-11-02', approvedBy: 'Managing Director' },
+      { id: 'po-1', poNumber: 'PO-2026-001', vendorName: 'Apex Packaging Ltd', item: 'Corrugated Boxes', description: '500x Corrugated Export Boxes', quantity: 500, unitPrice: 2.90, amount: 1450.00, status: 'Approved', createdAt: '2026-11-02', approvedBy: 'Authorized Procurement Officer' },
       { id: 'po-2', poNumber: 'PO-2026-002', vendorName: 'Global Logistics Hub', item: 'Freight Services', description: 'Pallet Freight Distribution (London Hub)', quantity: 1, unitPrice: 2300.00, amount: 2300.00, status: 'Sent', createdAt: '2026-11-03' },
     ];
   });
@@ -206,7 +208,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
 
   // Form states
   const [newVendor, setNewVendor] = useState({ name: '', contact: '', email: '', vatNumber: '', paymentTerms: 'Net 30' });
-  const [newPO, setNewPO] = useState({ vendorName: '', item: '', description: '', quantity: 1, unitPrice: 0 });
+  const [newPO, setNewPO] = useState({ vendorName: '', item: '', description: '', quantity: 1, unitPrice: 0, paymentType: 'Finance Invoice' as 'Finance Invoice' | 'Card Upfront' });
   const [newQuote, setNewQuote] = useState({ vendorName: '', quoteRef: '', item: '', quantity: 100, unitPrice: 0, leadTimeDays: 3, validUntil: '' });
 
   // Timeframe validation helper
@@ -284,6 +286,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
     if (!newPO.vendorName || !newPO.item) return;
     const poNum = `PO-2026-00${pos.length + 1}`;
     const calculatedAmount = Number(newPO.quantity) * Number(newPO.unitPrice);
+    const isCard = newPO.paymentType === 'Card Upfront';
     const entry: PurchaseOrder = {
       id: `po-${Date.now()}`,
       poNumber: poNum,
@@ -295,11 +298,38 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
       amount: calculatedAmount,
       status: 'Approved',
       createdAt: new Date().toISOString().substring(0, 10),
-      approvedBy: currentEmployee?.name || 'Managing Director'
+      approvedBy: currentEmployee?.name || 'Authorized Procurement Officer',
+      paymentType: newPO.paymentType,
+      isPaidUpfront: isCard
     };
+
+    // If paid upfront via card, log immediate settled outgoing
+    if (isCard) {
+      try {
+        const existingTx = JSON.parse(localStorage.getItem('biscuit_crm_financial_transactions') || '[]');
+        const vat = calculatedAmount * 0.2;
+        existingTx.unshift({
+          id: `TX-${Date.now()}`,
+          type: 'outgoing',
+          category: 'Supplier Payable',
+          reference: `${poNum} (Corporate Card Upfront)`,
+          counterparty: newPO.vendorName,
+          grossAmount: calculatedAmount + vat,
+          vatAmount: vat,
+          netAmount: calculatedAmount,
+          status: 'Settled',
+          paymentMethod: 'Corporate Card',
+          timestamp: new Date().toISOString()
+        });
+        localStorage.setItem('biscuit_crm_financial_transactions', JSON.stringify(existingTx));
+      } catch (err) {
+        console.warn(err);
+      }
+    }
+
     setPos([entry, ...pos]);
     setShowPOModal(false);
-    setNewPO({ vendorName: '', item: '', description: '', quantity: 1, unitPrice: 0 });
+    setNewPO({ vendorName: '', item: '', description: '', quantity: 1, unitPrice: 0, paymentType: 'Finance Invoice' });
   };
 
   const handleCreateQuote = (e: React.FormEvent) => {
@@ -338,7 +368,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
       amount: quote.totalAmount,
       status: 'Approved',
       createdAt: new Date().toISOString().substring(0, 10),
-      approvedBy: currentEmployee?.name || 'Managing Director'
+      approvedBy: currentEmployee?.name || 'Authorized Procurement Officer'
     };
 
     setPos([newPOEntry, ...pos]);
@@ -362,7 +392,7 @@ PO Number:        ${poNum}
 Quote Reference:  ${quote.quoteRef}
 Supplier:         ${quote.vendorName}
 Date of Order:    ${new Date().toISOString().substring(0, 10)}
-Authorised By:    ${currentEmployee?.name || 'Managing Director'} (Managing Director / Procurement)
+Authorised By:    ${currentEmployee?.name || 'Authorized Procurement Officer'} (Managing Director / Procurement)
 
 ORDERED SPECIFICATIONS:
 - Item / Description: ${quote.item}
@@ -398,7 +428,7 @@ Note: Invoices received without a valid Purchase Order number or with mismatched
 Please confirm receipt of this purchase order and advise estimated delivery dispatch date.
 
 Kind regards,
-${currentEmployee?.name || 'Managing Director'}
+${currentEmployee?.name || 'Authorized Procurement Officer'}
 Procurement & Supply Chain Operations
 Biscuit CRM`;
 
@@ -449,7 +479,7 @@ Biscuit CRM`;
         content: `Procurement dispatched PO ${po.poNumber} to ${po.vendorName} (£${po.amount.toFixed(2)} Net + £${(po.amount * 0.2).toFixed(2)} VAT). Awaiting supplier invoice & settlement clearance.`,
         category: 'Finance To-Do',
         department: 'Finance',
-        actor: currentEmployee?.name || 'Managing Director',
+        actor: currentEmployee?.name || 'Authorized Procurement Officer',
         badgeColor: 'border-amber-500/40 text-amber-300 bg-amber-500/10',
         createdAt: new Date().toISOString()
       });
@@ -469,28 +499,38 @@ Biscuit CRM`;
     // 1. Update PO Status to Received
     setPos(pos.map(p => p.id === receivingPO.id ? { ...p, status: 'Received' } : p));
 
-    // 2. Update / Increment Stock in Inventory
+    const existingMatch = inventory.find(
+      i => i.item.toLowerCase() === receivingPO.item.toLowerCase() ||
+           receivingPO.item.toLowerCase().includes(i.item.toLowerCase())
+    );
+
+    // 2. Update or Create Stock Item
+    let assignedSku = '';
+    let targetBay = stockLocation;
+
     setInventory(prev => {
-      const existing = prev.find(item => item.item.toLowerCase() === receivingPO.item.toLowerCase());
-      if (existing) {
-        return prev.map(item => item.id === existing.id ? {
+      if (existingMatch) {
+        assignedSku = existingMatch.sku;
+        targetBay = stockLocation || existingMatch.location;
+        return prev.map(item => item.id === existingMatch.id ? {
           ...item,
           onHand: item.onHand + receivedQty,
           available: item.available + receivedQty,
           lastRestocked: new Date().toISOString().substring(0, 10),
-          location: stockLocation || item.location
+          location: targetBay
         } : item);
       } else {
+        assignedSku = `SKU-${receivingPO.item.substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
         const newStock: StockItem = {
           id: `stk-${Date.now()}`,
-          sku: `SKU-${receivingPO.item.substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
+          sku: assignedSku,
           item: receivingPO.item,
-          category: 'Purchased Inventory',
+          category: 'Warehouse Stock',
           onHand: receivedQty,
           reserved: 0,
           available: receivedQty,
-          reorderLevel: 20,
-          location: stockLocation || 'Bay 1 - Main Floor',
+          reorderLevel: 25,
+          location: targetBay || 'Bay 1 - Rack A',
           lastRestocked: new Date().toISOString().substring(0, 10)
         };
         return [newStock, ...prev];
@@ -504,7 +544,7 @@ Biscuit CRM`;
         content: `Warehouse Goods In completed receipt of PO ${receivingPO.poNumber} from ${receivingPO.vendorName}. Available stock incremented in ${stockLocation}. Sales and CS pipelines updated.`,
         category: 'Goods In',
         department: 'Operations',
-        actor: currentEmployee?.name || 'Managing Director',
+        actor: currentEmployee?.name || 'Authorized Procurement Officer',
         badgeColor: 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10',
         createdAt: new Date().toISOString()
       });
@@ -534,7 +574,7 @@ Biscuit CRM`;
     const reportData = [
       ['PROCUREMENT & VENDOR AUDIT REPORT'],
       ['Timeframe Horizon', timeframe.toUpperCase()],
-      ['Generated By', currentEmployee?.name || 'Managing Director'],
+      ['Generated By', currentEmployee?.name || 'Authorized Procurement Officer'],
       ['Generated At', new Date().toISOString()],
       ['Vendor Filter', selectedVendorFilter],
       ['Status Filter', statusFilter],
@@ -1157,6 +1197,36 @@ Biscuit CRM`;
               </div>
 
               <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Procurement Payment Terms</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewPO({ ...newPO, paymentType: 'Finance Invoice' })}
+                    className={`p-2 rounded-xl border text-left text-xs font-bold transition ${
+                      newPO.paymentType === 'Finance Invoice'
+                        ? 'bg-purple-600/20 border-purple-500 text-purple-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <div>Finance Receives &amp; Pays</div>
+                    <div className="text-[10px] font-normal text-slate-500">Invoice credit terms</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewPO({ ...newPO, paymentType: 'Card Upfront' })}
+                    className={`p-2 rounded-xl border text-left text-xs font-bold transition ${
+                      newPO.paymentType === 'Card Upfront'
+                        ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <div>Procurement Card Upfront</div>
+                    <div className="text-[10px] font-normal text-slate-500">Immediate settlement</div>
+                  </button>
+                </div>
+              </div>
+
+              <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">Detailed Specifications</label>
                 <input
                   type="text"
@@ -1534,6 +1604,30 @@ Biscuit CRM`;
                 <X className="w-5 h-5"/>
               </button>
             </div>
+
+            {(() => {
+              const match = inventory.find(i => 
+                receivingPO && (i.item.toLowerCase() === receivingPO.item.toLowerCase() || 
+                receivingPO.item.toLowerCase().includes(i.item.toLowerCase()))
+              );
+              return (
+                <div className={`p-3 rounded-xl border text-xs mb-2 ${
+                  match 
+                    ? 'bg-sky-950/40 border-sky-500/40 text-sky-200' 
+                    : 'bg-purple-950/40 border-purple-500/40 text-purple-200'
+                }`}>
+                  {match ? (
+                    <div>
+                      <span className="font-bold">📦 Existing Stock Type Found:</span> SKU <span className="font-mono font-bold">{match.sku}</span> is currently stored in <span className="font-bold underline">{match.location}</span>. Storing here will increment active count from {match.onHand} to {match.onHand + receivedQty}.
+                    </div>
+                  ) : (
+                    <div>
+                      <span className="font-bold">✨ Brand New Stock Type:</span> System will generate a new SKU ID and create an active warehouse record. Assign an initial bay below.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             <form onSubmit={handleConfirmGoodsIn} className="space-y-3">
               <div>

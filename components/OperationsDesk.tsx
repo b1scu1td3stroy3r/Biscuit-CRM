@@ -25,7 +25,7 @@ export interface OrderItem {
   name: string;
   quantity: number;
   location: string;
-  status: "Reserved" | "Picked" | "Shipped";
+  status: "Reserved" | "Picked" | "Packaged" | "Dispatched";
 }
 
 export interface DispatchOrder {
@@ -36,7 +36,7 @@ export interface DispatchOrder {
   weightKg: number;
   carrier: "DPD Express" | "Royal Mail 24" | "Freightliner";
   trackingCode: string;
-  status: "Ready for Picking" | "Packed" | "Dispatched";
+  status: "Ready for Picking" | "Picked" | "Packaged" | "Dispatched";
   shippingCost?: number;
   items: OrderItem[];
 }
@@ -83,7 +83,7 @@ export default function OperationsDesk({
       weightKg: 28.0,
       carrier: "Royal Mail 24",
       trackingCode: "RM-2094811-GB",
-      status: "Packed",
+      status: "Packaged",
       shippingCost: 14.50,
       items: [
         {
@@ -208,7 +208,7 @@ Shipping Cost: £${parsedCost.toFixed(2)} (Deducted from daily revenue)`);
       prev.map(ord => {
         if (ord.id !== activeModalOrder.id) return ord;
         // Mark all items as Shipped / Depleted from active warehouse inventory
-        const depletedItems = ord.items.map(item => ({ ...item, status: "Shipped" as const }));
+        const depletedItems = ord.items.map(item => ({ ...item, status: "Dispatched" as const }));
         return {
           ...ord,
           status: "Dispatched",
@@ -237,7 +237,7 @@ Shipping Cost: £${parsedCost.toFixed(2)} (Deducted from daily revenue)`);
     }
     setOrders(prev =>
       prev.map(ord =>
-        ord.id === order.id ? { ...ord, status: "Packed" } : ord
+        ord.id === order.id ? { ...ord, status: "Packaged" } : ord
       )
     );
     if (onAwardXp) onAwardXp(15, "Order Picked & Palletized (+15 XP)");
@@ -284,7 +284,7 @@ Shipping Cost: £${parsedCost.toFixed(2)} (Deducted from daily revenue)`);
             <Barcode className="w-4 h-4 text-sky-400" />
           </div>
           <div className="text-2xl font-black text-white">
-            {orders.filter(o => o.status === "Packed").length}
+            {orders.filter(o => o.status === "Packaged").length}
           </div>
           <p className="text-[11px] text-slate-500">Items picked; awaiting shipping fee & dispatch</p>
         </div>
@@ -317,7 +317,7 @@ Shipping Cost: £${parsedCost.toFixed(2)} (Deducted from daily revenue)`);
           <tbody className="divide-y divide-slate-800/60 bg-slate-900/60">
             {orders.map(order => {
               const safeItems = Array.isArray(order.items) ? order.items : [];
-              const allItemsPicked = safeItems.length > 0 && safeItems.every(i => i.status === "Picked" || i.status === "Shipped");
+              const allItemsPicked = safeItems.length > 0 && safeItems.every(i => i.status === "Picked" || i.status === "Dispatched");
               return (
                 <tr key={order.id} className="hover:bg-slate-800/40 transition">
                   <td className="py-3 px-4 font-mono font-bold text-purple-300 align-top">
@@ -336,7 +336,7 @@ Shipping Cost: £${parsedCost.toFixed(2)} (Deducted from daily revenue)`);
                         <div
                           key={item.id}
                           className={`p-2 rounded-lg border text-[11px] transition ${
-                            item.status === "Shipped"
+                            item.status === "Dispatched"
                               ? "bg-slate-950/40 border-slate-800 text-slate-500 opacity-60"
                               : item.status === "Picked"
                               ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-300"
@@ -369,12 +369,12 @@ Shipping Cost: £${parsedCost.toFixed(2)} (Deducted from daily revenue)`);
                             ) : (
                               <span
                                 className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-                                  item.status === "Shipped"
+                                  item.status === "Dispatched"
                                     ? "bg-slate-800 text-slate-400 line-through"
                                     : "bg-emerald-500/20 text-emerald-300"
                                 }`}
                               >
-                                {item.status === "Shipped" ? "Depleted" : "Picked"}
+                                {item.status === "Dispatched" ? "Depleted" : "Picked"}
                               </span>
                             )}
                           </div>
@@ -396,7 +396,7 @@ Shipping Cost: £${parsedCost.toFixed(2)} (Deducted from daily revenue)`);
                         className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${
                           order.status === "Dispatched"
                             ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
-                            : order.status === "Packed"
+                            : order.status === "Packaged"
                             ? "bg-sky-500/20 text-sky-300 border-sky-500/30"
                             : "bg-amber-500/20 text-amber-300 border-amber-500/30"
                         }`}
@@ -432,7 +432,7 @@ Shipping Cost: £${parsedCost.toFixed(2)} (Deducted from daily revenue)`);
                       >
                         Pack & Label <ArrowRight className="w-3 h-3" />
                       </button>
-                    ) : order.status === "Packed" ? (
+                    ) : order.status === "Packaged" ? (
                       <button
                         onClick={() => openFulfillmentModal(order, "dispatch")}
                         className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] inline-flex items-center gap-1.5 shadow transition"

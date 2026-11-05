@@ -121,7 +121,7 @@ export default function CustomerServicesDesk({
       status: "Open",
       description: "Shipment scheduled for 10:00 AM delivery not yet arrived at Leeds depot.",
       openedAt: "Today, 14:15",
-      assignedTo: "Managing Director"
+      assignedTo: "Customer Support Lead"
     },
     {
       id: "TKT-102",
@@ -134,7 +134,7 @@ export default function CustomerServicesDesk({
       status: "In Investigation",
       description: "Damaged packing seals on batch pallet PLT-EUR-WOOD.",
       openedAt: "Today, 11:30",
-      assignedTo: "Managing Director"
+      assignedTo: "Customer Support Lead"
     }
   ]);
 
@@ -426,7 +426,7 @@ export default function CustomerServicesDesk({
                         status: "Open",
                         description: callNotes,
                         openedAt: "Just now",
-                        assignedTo: currentEmployee?.name || "Managing Director"
+                        assignedTo: currentEmployee?.name || "Customer Support Lead"
                       };
                       setTickets([newTkt, ...tickets]);
                       if (onAwardXp) onAwardXp(30, "Support Case Logged to CS Pipeline (+30 XP)");
@@ -475,7 +475,7 @@ export default function CustomerServicesDesk({
                   status: "Open",
                   description: "Customer requested expedited tracking update on dispatched freight.",
                   openedAt: "Just now",
-                  assignedTo: currentEmployee?.name || "Managing Director"
+                  assignedTo: currentEmployee?.name || "Customer Support Lead"
                 };
                 setTickets([newTkt, ...tickets]);
               }}
