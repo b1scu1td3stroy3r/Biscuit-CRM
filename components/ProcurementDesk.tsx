@@ -1,9 +1,32 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Building, Plus, FileText, CheckCircle2, Clock, DollarSign, Upload, ShieldCheck, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Building,
+  Plus,
+  FileText,
+  CheckCircle2,
+  Clock,
+  DollarSign,
+  Upload,
+  ShieldCheck,
+  AlertCircle,
+  Search,
+  Filter,
+  Download,
+  Calendar,
+  Layers,
+  ArrowRight,
+  TrendingDown,
+  Building2,
+  Check,
+  X,
+  FileSpreadsheet
+} from 'lucide-react';
 
-interface Vendor {
+export type TimeframeFilter = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'ytd';
+
+export interface Vendor {
   id: string;
   name: string;
   contact: string;
@@ -13,148 +36,718 @@ interface Vendor {
   paymentTerms: string;
 }
 
-interface PurchaseOrder {
+export interface PurchaseOrder {
   id: string;
-  vendorName: string;
-  description: string;
-  amount: number;
-  status: 'Draft' | 'Approved' | 'Sent' | 'Delivered';
-  createdAt: string;
   poNumber: string;
+  vendorName: string;
+  item: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+  status: 'Draft' | 'Approved' | 'Sent' | 'Received' | 'Cancelled';
+  createdAt: string;
+  approvedBy?: string;
+}
+
+export interface VendorQuote {
+  id: string;
+  quoteRef: string;
+  vendorName: string;
+  item: string;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+  leadTimeDays: number;
+  validUntil: string;
+  status: 'Received' | 'Accepted' | 'Declined';
+  createdAt: string;
 }
 
 export default function ProcurementDesk({ currentEmployee }: { currentEmployee?: any }) {
-  const [activeTab, setActiveTab] = useState<'vendors' | 'pos'>('pos');
+  const [activeTab, setActiveTab] = useState<'pos' | 'quotes' | 'vendors' | 'audit'>('pos');
+  const [timeframe, setTimeframe] = useState<TimeframeFilter>('month');
 
-  // Initial local state / defaults
-  const [vendors, setVendors] = useState<Vendor[]>([
-    { id: '1', name: 'Apex Packaging Ltd', contact: 'Mark Evans', email: 'orders@apexpkg.co.uk', vatNumber: 'GB 891 2341 02', status: 'Approved', paymentTerms: 'Net 30' },
-    { id: '2', name: 'Global Logistics Hub', contact: 'Sarah Jenkins', email: 'accounts@globallogistics.com', vatNumber: 'GB 102 9982 44', status: 'Approved', paymentTerms: 'Net 14' },
-    { id: '3', name: 'Raw Material Direct', contact: 'Liam Scott', email: 'sales@rawdirect.co.uk', vatNumber: 'GB 443 1120 99', status: 'Pending Review', paymentTerms: 'Pre-payment' },
-  ]);
+  // Filters
+  const [selectedVendorFilter, setSelectedVendorFilter] = useState<string>('all');
+  const [itemSearchTerm, setItemSearchTerm] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  const [pos, setPos] = useState<PurchaseOrder[]>([
-    { id: 'po-1', poNumber: 'PO-2026-001', vendorName: 'Apex Packaging Ltd', description: '500x Corrugated Export Boxes', amount: 1450.00, status: 'Approved', createdAt: '2026-11-02' },
-    { id: 'po-2', poNumber: 'PO-2026-002', vendorName: 'Global Logistics Hub', description: 'Pallet Freight Distribution (London Hub)', amount: 2300.00, status: 'Sent', createdAt: '2026-11-03' },
-  ]);
-
-  const [newVendor, setNewVendor] = useState({ name: '', contact: '', email: '', vatNumber: '', paymentTerms: 'Net 30' });
-  const [newPO, setNewPO] = useState({ vendorName: '', description: '', amount: '' });
+  // Modals
   const [showPOModal, setShowPOModal] = useState(false);
   const [showVendorModal, setShowVendorModal] = useState(false);
+  const [showQuoteModal, setShowQuoteModal] = useState(false);
 
+  // Initial local state / persistent storage
+  const [vendors, setVendors] = useState<Vendor[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('biscuit_crm_procurement_vendors');
+        if (saved) return JSON.parse(saved);
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+    return [
+      { id: '1', name: 'Apex Packaging Ltd', contact: 'Mark Evans', email: 'orders@apexpkg.co.uk', vatNumber: 'GB 891 2341 02', status: 'Approved', paymentTerms: 'Net 30' },
+      { id: '2', name: 'Global Logistics Hub', contact: 'Sarah Jenkins', email: 'accounts@globallogistics.com', vatNumber: 'GB 102 9982 44', status: 'Approved', paymentTerms: 'Net 14' },
+      { id: '3', name: 'Raw Material Direct', contact: 'Liam Scott', email: 'sales@rawdirect.co.uk', vatNumber: 'GB 443 1120 99', status: 'Pending Review', paymentTerms: 'Pre-payment' },
+    ];
+  });
+
+  const [pos, setPos] = useState<PurchaseOrder[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('biscuit_crm_procurement_pos');
+        if (saved) return JSON.parse(saved);
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+    return [
+      { id: 'po-1', poNumber: 'PO-2026-001', vendorName: 'Apex Packaging Ltd', item: 'Corrugated Boxes', description: '500x Corrugated Export Boxes', quantity: 500, unitPrice: 2.90, amount: 1450.00, status: 'Approved', createdAt: '2026-11-02', approvedBy: 'Managing Director' },
+      { id: 'po-2', poNumber: 'PO-2026-002', vendorName: 'Global Logistics Hub', item: 'Freight Services', description: 'Pallet Freight Distribution (London Hub)', quantity: 1, unitPrice: 2300.00, amount: 2300.00, status: 'Sent', createdAt: '2026-11-03' },
+    ];
+  });
+
+  const [quotes, setQuotes] = useState<VendorQuote[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('biscuit_crm_procurement_quotes');
+        if (saved) return JSON.parse(saved);
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+    return [
+      { id: 'q-1', quoteRef: 'Q-8821', vendorName: 'Apex Packaging Ltd', item: 'Reinforced Strapping Bands', quantity: 1000, unitPrice: 1.40, totalAmount: 1400.00, leadTimeDays: 3, validUntil: '2026-11-30', status: 'Received', createdAt: '2026-11-04' },
+      { id: 'q-2', quoteRef: 'Q-8822', vendorName: 'Raw Material Direct', item: 'Heavy Duty Weatherproof Crates', quantity: 200, unitPrice: 14.50, totalAmount: 2900.00, leadTimeDays: 5, validUntil: '2026-12-15', status: 'Received', createdAt: '2026-11-05' },
+    ];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('biscuit_crm_procurement_vendors', JSON.stringify(vendors));
+    } catch (e) {
+      console.warn(e);
+    }
+  }, [vendors]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('biscuit_crm_procurement_pos', JSON.stringify(pos));
+    } catch (e) {
+      console.warn(e);
+    }
+  }, [pos]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('biscuit_crm_procurement_quotes', JSON.stringify(quotes));
+    } catch (e) {
+      console.warn(e);
+    }
+  }, [quotes]);
+
+  // Form states
+  const [newVendor, setNewVendor] = useState({ name: '', contact: '', email: '', vatNumber: '', paymentTerms: 'Net 30' });
+  const [newPO, setNewPO] = useState({ vendorName: '', item: '', description: '', quantity: 1, unitPrice: 0 });
+  const [newQuote, setNewQuote] = useState({ vendorName: '', quoteRef: '', item: '', quantity: 100, unitPrice: 0, leadTimeDays: 3, validUntil: '' });
+
+  // Timeframe validation helper
+  const isWithinTimeframe = (dateStr: string, tf: TimeframeFilter) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    if (tf === 'day') {
+      return date >= startOfToday;
+    }
+    if (tf === 'week') {
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return date >= oneWeekAgo;
+    }
+    if (tf === 'month') {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      return date >= startOfMonth;
+    }
+    if (tf === 'quarter') {
+      const currentQuarter = Math.floor(now.getMonth() / 3);
+      const startOfQuarter = new Date(now.getFullYear(), currentQuarter * 3, 1);
+      return date >= startOfQuarter;
+    }
+    if (tf === 'year') {
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      return date >= startOfYear;
+    }
+    if (tf === 'ytd') {
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      return date >= startOfYear && date <= now;
+    }
+    return true;
+  };
+
+  // Filtered datasets
+  const filteredPOs = useMemo(() => {
+    return pos.filter(po => {
+      if (!isWithinTimeframe(po.createdAt, timeframe)) return false;
+      if (selectedVendorFilter !== 'all' && po.vendorName !== selectedVendorFilter) return false;
+      if (statusFilter !== 'all' && po.status !== statusFilter) return false;
+      if (itemSearchTerm) {
+        const term = itemSearchTerm.toLowerCase();
+        const matchItem = po.item?.toLowerCase().includes(term);
+        const matchDesc = po.description?.toLowerCase().includes(term);
+        const matchPO = po.poNumber.toLowerCase().includes(term);
+        if (!matchItem && !matchDesc && !matchPO) return false;
+      }
+      return true;
+    });
+  }, [pos, timeframe, selectedVendorFilter, statusFilter, itemSearchTerm]);
+
+  const filteredQuotes = useMemo(() => {
+    return quotes.filter(q => {
+      if (!isWithinTimeframe(q.createdAt, timeframe)) return false;
+      if (selectedVendorFilter !== 'all' && q.vendorName !== selectedVendorFilter) return false;
+      if (itemSearchTerm) {
+        const term = itemSearchTerm.toLowerCase();
+        const matchItem = q.item?.toLowerCase().includes(term);
+        const matchRef = q.quoteRef.toLowerCase().includes(term);
+        if (!matchItem && !matchRef) return false;
+      }
+      return true;
+    });
+  }, [quotes, timeframe, selectedVendorFilter, itemSearchTerm]);
+
+  // Aggregate metrics
+  const totalPOSpend = filteredPOs.reduce((sum, p) => sum + p.amount, 0);
+  const totalQuotesValue = filteredQuotes.reduce((sum, q) => sum + q.totalAmount, 0);
+  const activeVendorsCount = new Set(filteredPOs.map(p => p.vendorName)).size;
+
+  // Handlers
   const handleCreatePO = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPO.vendorName || !newPO.amount) return;
+    if (!newPO.vendorName || !newPO.item) return;
     const poNum = `PO-2026-00${pos.length + 1}`;
+    const calculatedAmount = Number(newPO.quantity) * Number(newPO.unitPrice);
     const entry: PurchaseOrder = {
       id: `po-${Date.now()}`,
       poNumber: poNum,
       vendorName: newPO.vendorName,
-      description: newPO.description,
-      amount: parseFloat(newPO.amount) || 0,
+      item: newPO.item,
+      description: newPO.description || `${newPO.quantity}x ${newPO.item}`,
+      quantity: Number(newPO.quantity) || 1,
+      unitPrice: Number(newPO.unitPrice) || 0,
+      amount: calculatedAmount,
       status: 'Approved',
-      createdAt: new Date().toISOString().split('T')[0],
+      createdAt: new Date().toISOString().substring(0, 10),
+      approvedBy: currentEmployee?.name || 'Managing Director'
     };
     setPos([entry, ...pos]);
-    setNewPO({ vendorName: '', description: '', amount: '' });
     setShowPOModal(false);
+    setNewPO({ vendorName: '', item: '', description: '', quantity: 1, unitPrice: 0 });
   };
 
-  const handleCreateVendor = (e: React.FormEvent) => {
+  const handleCreateQuote = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newQuote.vendorName || !newQuote.item) return;
+    const ref = newQuote.quoteRef || `Q-${Math.floor(1000 + Math.random() * 9000)}`;
+    const total = Number(newQuote.quantity) * Number(newQuote.unitPrice);
+    const entry: VendorQuote = {
+      id: `q-${Date.now()}`,
+      quoteRef: ref,
+      vendorName: newQuote.vendorName,
+      item: newQuote.item,
+      quantity: Number(newQuote.quantity) || 1,
+      unitPrice: Number(newQuote.unitPrice) || 0,
+      totalAmount: total,
+      leadTimeDays: Number(newQuote.leadTimeDays) || 3,
+      validUntil: newQuote.validUntil || '2026-12-31',
+      status: 'Received',
+      createdAt: new Date().toISOString().substring(0, 10)
+    };
+    setQuotes([entry, ...quotes]);
+    setShowQuoteModal(false);
+    setNewQuote({ vendorName: '', quoteRef: '', item: '', quantity: 100, unitPrice: 0, leadTimeDays: 3, validUntil: '' });
+  };
+
+  const handleConvertQuoteToPO = (quote: VendorQuote) => {
+    const poNum = `PO-2026-00${pos.length + 1}`;
+    const newPOEntry: PurchaseOrder = {
+      id: `po-${Date.now()}`,
+      poNumber: poNum,
+      vendorName: quote.vendorName,
+      item: quote.item,
+      description: `Fulfilled from Quote ${quote.quoteRef}: ${quote.quantity}x ${quote.item}`,
+      quantity: quote.quantity,
+      unitPrice: quote.unitPrice,
+      amount: quote.totalAmount,
+      status: 'Approved',
+      createdAt: new Date().toISOString().substring(0, 10),
+      approvedBy: currentEmployee?.name || 'Managing Director'
+    };
+    setPos([newPOEntry, ...pos]);
+    setQuotes(quotes.map(q => q.id === quote.id ? { ...q, status: 'Accepted' } : q));
+    alert(`Converted ${quote.quoteRef} into Approved Purchase Order ${poNum}`);
+  };
+
+  const handleRegisterVendor = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newVendor.name) return;
     const entry: Vendor = {
-      id: `ven-${Date.now()}`,
-      name: newVendor.name,
-      contact: newVendor.contact,
-      email: newVendor.email,
-      vatNumber: newVendor.vatNumber,
-      status: 'Pending Review',
-      paymentTerms: newVendor.paymentTerms,
+      id: String(vendors.length + 1),
+      ...newVendor,
+      status: 'Approved'
     };
-    setVendors([entry, ...vendors]);
-    setNewVendor({ name: '', contact: '', email: '', vatNumber: '', paymentTerms: 'Net 30' });
+    setVendors([...vendors, entry]);
     setShowVendorModal(false);
+    setNewVendor({ name: '', contact: '', email: '', vatNumber: '', paymentTerms: 'Net 30' });
+  };
+
+  // Generate Procurement Audit Report (.CSV)
+  const handleExportProcurementReport = () => {
+    const reportData = [
+      ['PROCUREMENT & VENDOR AUDIT REPORT'],
+      ['Timeframe Horizon', timeframe.toUpperCase()],
+      ['Generated By', currentEmployee?.name || 'Managing Director'],
+      ['Generated At', new Date().toISOString()],
+      ['Vendor Filter', selectedVendorFilter],
+      ['Status Filter', statusFilter],
+      ['', ''],
+      ['AUDIT SUMMARY', ''],
+      ['Total Purchase Orders Issued', filteredPOs.length],
+      ['Total Committed Spend (£)', `£${totalPOSpend.toFixed(2)}`],
+      ['Total Received Quotes', filteredQuotes.length],
+      ['Quotes Pipeline Value (£)', `£${totalQuotesValue.toFixed(2)}`],
+      ['', ''],
+      ['PURCHASE ORDER AUDIT LOG', ''],
+      ['Date', 'PO Number', 'Vendor', 'Item / Spec', 'Quantity', 'Unit Price (£)', 'Net Amount (£)', '20% VAT (£)', 'Gross Amount (£)', 'Status', 'Authorized By']
+    ];
+
+    filteredPOs.forEach(p => {
+      const net = p.amount;
+      const vat = net * 0.20;
+      const gross = net + vat;
+      reportData.push([
+        p.createdAt,
+        p.poNumber,
+        `"${p.vendorName.replace(/"/g, '""')}"`,
+        `"${p.item.replace(/"/g, '""')}"`,
+        p.quantity,
+        p.unitPrice.toFixed(2),
+        net.toFixed(2),
+        vat.toFixed(2),
+        gross.toFixed(2),
+        p.status,
+        p.approvedBy || 'Automated'
+      ]);
+    });
+
+    reportData.push(['', '']);
+    reportData.push(['RECEIVED QUOTES TENDER COMPARISON', '']);
+    reportData.push(['Received Date', 'Quote Ref', 'Vendor', 'Item', 'Quantity', 'Unit Price (£)', 'Total Value (£)', 'Lead Time (Days)', 'Valid Until', 'Status']);
+
+    filteredQuotes.forEach(q => {
+      reportData.push([
+        q.createdAt,
+        q.quoteRef,
+        `"${q.vendorName.replace(/"/g, '""')}"`,
+        `"${q.item.replace(/"/g, '""')}"`,
+        q.quantity,
+        q.unitPrice.toFixed(2),
+        q.totalAmount.toFixed(2),
+        q.leadTimeDays,
+        q.validUntil,
+        q.status
+      ]);
+    });
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + reportData.map(e => e.join(',')).join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `BiscuitCRM_Procurement_Audit_${timeframe}_${new Date().toISOString().substring(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
     <div className="space-y-6">
-      {/* Top Banner */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-900/60 border border-slate-800">
-        <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <Building className="w-5 h-5 text-indigo-400" /> Procurement, Vendors & Inventory POs
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Manage authorized suppliers, upload quote tenders, and issue approved purchase orders.
-          </p>
+      {/* Top Banner & Audit Actions */}
+      <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-slate-950 border border-slate-800 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            <Building2 className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
+              Procurement, Vendor Management & Inventory POs
+              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                Audit Active
+              </span>
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Multi-timeframe PO expenditure audits, received quote tenders, unit-price comparisons & supplier governance.
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            onClick={handleExportProcurementReport}
+            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold inline-flex items-center gap-1.5 shadow transition"
+          >
+            <Download className="w-3.5 h-3.5 text-indigo-400" /> Export Audit Report
+          </button>
+          <button
+            onClick={() => setShowQuoteModal(true)}
+            className="px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold inline-flex items-center gap-1.5 transition shadow"
+          >
+            <Plus className="w-3.5 h-3.5" /> Log Received Quote
+          </button>
           <button
             onClick={() => setShowVendorModal(true)}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+            className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold inline-flex items-center gap-1.5 transition"
           >
-            + Register Vendor
+            <Plus className="w-3.5 h-3.5" /> Register Vendor
           </button>
           <button
             onClick={() => setShowPOModal(true)}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition"
+            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow transition"
           >
-            + Raise Purchase Order
+            <Plus className="w-3.5 h-3.5" /> Raise Purchase Order
           </button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 border-b border-slate-800 pb-2">
-        <button
-          onClick={() => setActiveTab('pos')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-            activeTab === 'pos' ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          Purchase Orders ({pos.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('vendors')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-            activeTab === 'vendors' ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          Approved Vendors ({vendors.length})
-        </button>
+      {/* Navigation Sub-Tabs & Multi-Timeframe Controls */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-3">
+        {/* Sub-Tab Navigation */}
+        <div className="flex items-center gap-1.5">
+          {[
+            { id: 'pos', label: `Purchase Orders (${filteredPOs.length})`, icon: FileText },
+            { id: 'quotes', label: `Received Quotes (${filteredQuotes.length})`, icon: FileSpreadsheet },
+            { id: 'vendors', label: `Approved Vendors (${vendors.length})`, icon: Building },
+            { id: 'audit', label: 'Spend Audit Trail', icon: ShieldCheck }
+          ].map(tab => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
+                  active
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                    : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Multi-Timeframe Filter Pill: Day, Week, Month, Quarter, Year, YTD */}
+        <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+          <Calendar className="w-3.5 h-3.5 text-slate-500 ml-2" />
+          {[
+            { id: 'day', label: 'Day (Today)' },
+            { id: 'week', label: 'Week' },
+            { id: 'month', label: 'Month' },
+            { id: 'quarter', label: 'Quarter' },
+            { id: 'year', label: 'Year' },
+            { id: 'ytd', label: 'YTD' }
+          ].map(tf => (
+            <button
+              key={tf.id}
+              onClick={() => setTimeframe(tf.id as TimeframeFilter)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                timeframe === tf.id
+                  ? 'bg-purple-600 text-white shadow'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              }`}
+            >
+              {tf.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Purchase Orders List */}
+      {/* Aggregate KPI Metric Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+          <div className="flex items-center justify-between text-slate-400 text-xs">
+            <span>Committed PO Spend</span>
+            <DollarSign className="w-4 h-4 text-rose-400" />
+          </div>
+          <div className="text-2xl font-black text-rose-400 font-mono">
+            £{totalPOSpend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <p className="text-[11px] text-slate-500">
+            {filteredPOs.length} POs issued in {timeframe.toUpperCase()}
+          </p>
+        </div>
+
+        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+          <div className="flex items-center justify-between text-slate-400 text-xs">
+            <span>Received Quotes Tender</span>
+            <Layers className="w-4 h-4 text-amber-400" />
+          </div>
+          <div className="text-2xl font-black text-amber-400 font-mono">
+            £{totalQuotesValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <p className="text-[11px] text-slate-500">
+            {filteredQuotes.length} quotes actively evaluated
+          </p>
+        </div>
+
+        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+          <div className="flex items-center justify-between text-slate-400 text-xs">
+            <span>Active Suppliers Audited</span>
+            <Building className="w-4 h-4 text-sky-400" />
+          </div>
+          <div className="text-2xl font-black text-sky-400 font-mono">
+            {activeVendorsCount} Vendors
+          </div>
+          <p className="text-[11px] text-slate-500">Across {vendors.length} registered partners</p>
+        </div>
+
+        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+          <div className="flex items-center justify-between text-slate-400 text-xs">
+            <span>Avg Order Commitment</span>
+            <TrendingDown className="w-4 h-4 text-emerald-400" />
+          </div>
+          <div className="text-2xl font-black text-emerald-400 font-mono">
+            £{(filteredPOs.length > 0 ? totalPOSpend / filteredPOs.length : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <p className="text-[11px] text-slate-500">Average transaction size</p>
+        </div>
+      </div>
+
+      {/* Advanced Filter Ribbon (Vendor Filter, Item Search & Status Selector) */}
+      <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3 w-full md:w-auto flex-1">
+          {/* Item / Part Number / Keyword Search */}
+          <div className="relative flex-1 max-w-sm">
+            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="Filter by item, spec or description..."
+              value={itemSearchTerm}
+              onChange={(e) => setItemSearchTerm(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+            />
+          </div>
+
+          {/* Vendor Filter Dropdown */}
+          <div className="flex items-center gap-1.5">
+            <Filter className="w-3.5 h-3.5 text-slate-500" />
+            <select
+              value={selectedVendorFilter}
+              onChange={(e) => setSelectedVendorFilter(e.target.value)}
+              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="all">All Vendors ({vendors.length})</option>
+              {vendors.map(v => (
+                <option key={v.id} value={v.name}>{v.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Status Filter Dropdown */}
+          {activeTab === 'pos' && (
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="all">All Statuses</option>
+              <option value="Approved">Approved</option>
+              <option value="Sent">Sent</option>
+              <option value="Received">Received</option>
+              <option value="Draft">Draft</option>
+            </select>
+          )}
+        </div>
+
+        <div className="text-xs text-slate-400 font-mono">
+          Showing {activeTab === 'pos' ? filteredPOs.length : filteredQuotes.length} matching entries
+        </div>
+      </div>
+
+      {/* VIEW 1: PURCHASE ORDERS */}
       {activeTab === 'pos' && (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-xl overflow-hidden">
+        <div className="overflow-x-auto rounded-xl border border-slate-800">
           <table className="w-full text-left text-xs text-slate-300">
-            <thead className="bg-slate-800/60 uppercase font-mono text-[10px] text-slate-400">
+            <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
               <tr>
-                <th className="px-4 py-3">PO Number</th>
-                <th className="px-4 py-3">Vendor</th>
-                <th className="px-4 py-3">Line Description</th>
-                <th className="px-4 py-3">Net Value</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Date</th>
+                <th className="py-3 px-4">PO Number</th>
+                <th className="py-3 px-4">Vendor</th>
+                <th className="py-3 px-4">Item & Line Description</th>
+                <th className="py-3 px-4 text-center">Qty</th>
+                <th className="py-3 px-4 text-right">Unit Price</th>
+                <th className="py-3 px-4 text-right">Net Value</th>
+                <th className="py-3 px-4 text-center">Status</th>
+                <th className="py-3 px-4">Issued Date</th>
+                <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
-              {pos.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-800/30 transition">
-                  <td className="px-4 py-3 font-mono font-bold text-indigo-300">{p.poNumber}</td>
-                  <td className="px-4 py-3 font-medium text-white">{p.vendorName}</td>
-                  <td className="px-4 py-3 text-slate-400">{p.description}</td>
-                  <td className="px-4 py-3 font-bold text-white">£{p.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                      p.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/10 text-amber-400'
+            <tbody className="divide-y divide-slate-800/60 bg-slate-900/60">
+              {filteredPOs.map(po => (
+                <tr key={po.id} className="hover:bg-slate-800/40 transition">
+                  <td className="py-3 px-4 font-mono font-bold text-indigo-400">{po.poNumber}</td>
+                  <td className="py-3 px-4 font-semibold text-white">{po.vendorName}</td>
+                  <td className="py-3 px-4">
+                    <div className="font-bold text-slate-200">{po.item}</div>
+                    <div className="text-[10px] text-slate-400">{po.description}</div>
+                  </td>
+                  <td className="py-3 px-4 text-center font-mono">{po.quantity}</td>
+                  <td className="py-3 px-4 text-right font-mono text-slate-400">£{po.unitPrice?.toFixed(2) || '-'}</td>
+                  <td className="py-3 px-4 text-right font-mono font-bold text-slate-100">£{po.amount.toFixed(2)}</td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                      po.status === 'Approved' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+                      po.status === 'Sent' ? 'bg-sky-500/20 text-sky-300 border-sky-500/30' :
+                      po.status === 'Received' ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' :
+                      'bg-amber-500/20 text-amber-300 border-amber-500/30'
                     }`}>
-                      {p.status}
+                      {po.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 font-mono text-slate-500">{p.createdAt}</td>
+                  <td className="py-3 px-4 font-mono text-slate-400">{po.createdAt}</td>
+                  <td className="py-3 px-4 text-right">
+                    {po.status === 'Approved' && (
+                      <button
+                        onClick={() => {
+                          setPos(pos.map(p => p.id === po.id ? { ...p, status: 'Sent' } : p));
+                          alert(`Marked ${po.poNumber} as Sent to ${po.vendorName}`);
+                        }}
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[10px] font-bold transition"
+                      >
+                        Transmit &rarr;
+                      </button>
+                    )}
+                    {po.status === 'Sent' && (
+                      <button
+                        onClick={() => {
+                          setPos(pos.map(p => p.id === po.id ? { ...p, status: 'Received' } : p));
+                          alert(`Stock Received for ${po.poNumber}`);
+                        }}
+                        className="px-2.5 py-1 rounded bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-bold transition"
+                      >
+                        Mark Received
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {filteredPOs.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-slate-500">
+                    No purchase orders match the current filter and timeframe ({timeframe}).
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* VIEW 2: RECEIVED QUOTES & TENDER COMPARISON */}
+      {activeTab === 'quotes' && (
+        <div className="overflow-x-auto rounded-xl border border-slate-800">
+          <table className="w-full text-left text-xs text-slate-300">
+            <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
+              <tr>
+                <th className="py-3 px-4">Quote Ref</th>
+                <th className="py-3 px-4">Vendor</th>
+                <th className="py-3 px-4">Item Spec</th>
+                <th className="py-3 px-4 text-center">Quantity</th>
+                <th className="py-3 px-4 text-right">Unit Price</th>
+                <th className="py-3 px-4 text-right">Total Tender (£)</th>
+                <th className="py-3 px-4 text-center">Lead Time</th>
+                <th className="py-3 px-4">Valid Until</th>
+                <th className="py-3 px-4 text-center">Status</th>
+                <th className="py-3 px-4 text-right">Tender Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 bg-slate-900/60">
+              {filteredQuotes.map(q => (
+                <tr key={q.id} className="hover:bg-slate-800/40 transition">
+                  <td className="py-3 px-4 font-mono font-bold text-amber-400">{q.quoteRef}</td>
+                  <td className="py-3 px-4 font-semibold text-white">{q.vendorName}</td>
+                  <td className="py-3 px-4 font-bold text-slate-200">{q.item}</td>
+                  <td className="py-3 px-4 text-center font-mono">{q.quantity}</td>
+                  <td className="py-3 px-4 text-right font-mono text-emerald-400 font-bold">£{q.unitPrice.toFixed(2)}</td>
+                  <td className="py-3 px-4 text-right font-mono font-bold text-white">£{q.totalAmount.toFixed(2)}</td>
+                  <td className="py-3 px-4 text-center font-mono">{q.leadTimeDays} days</td>
+                  <td className="py-3 px-4 font-mono text-slate-400">{q.validUntil}</td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                      q.status === 'Accepted' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+                      q.status === 'Declined' ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' :
+                      'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                    }`}>
+                      {q.status}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    {q.status === 'Received' && (
+                      <button
+                        onClick={() => handleConvertQuoteToPO(q)}
+                        className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] inline-flex items-center gap-1 shadow transition"
+                      >
+                        <Check className="w-3 h-3" /> Convert to PO
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {filteredQuotes.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="py-8 text-center text-slate-500">
+                    No supplier quotes recorded for this timeframe ({timeframe}).
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* VIEW 3: APPROVED VENDORS */}
+      {activeTab === 'vendors' && (
+        <div className="overflow-x-auto rounded-xl border border-slate-800">
+          <table className="w-full text-left text-xs text-slate-300">
+            <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
+              <tr>
+                <th className="py-3 px-4">Vendor Name</th>
+                <th className="py-3 px-4">Contact Person</th>
+                <th className="py-3 px-4">Email</th>
+                <th className="py-3 px-4 font-mono">VAT Number</th>
+                <th className="py-3 px-4">Terms</th>
+                <th className="py-3 px-4 text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 bg-slate-900/60">
+              {vendors.map(v => (
+                <tr key={v.id} className="hover:bg-slate-800/40 transition">
+                  <td className="py-3 px-4 font-bold text-white">{v.name}</td>
+                  <td className="py-3 px-4 text-slate-300">{v.contact}</td>
+                  <td className="py-3 px-4 text-slate-400">{v.email}</td>
+                  <td className="py-3 px-4 font-mono text-purple-300">{v.vatNumber}</td>
+                  <td className="py-3 px-4 font-mono text-slate-300">{v.paymentTerms}</td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                      v.status === 'Approved' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+                      v.status === 'Pending Review' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' :
+                      'bg-slate-800 text-slate-400 border-slate-700'
+                    }`}>
+                      {v.status}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -162,86 +755,146 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
         </div>
       )}
 
-      {/* Vendors List */}
-      {activeTab === 'vendors' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {vendors.map((v) => (
-            <div key={v.id} className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="font-bold text-white text-sm">{v.name}</h4>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                  v.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/10 text-amber-400'
-                }`}>
-                  {v.status}
-                </span>
+      {/* VIEW 4: SPEND AUDIT TRAIL */}
+      {activeTab === 'audit' && (
+        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-bold text-white flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" /> Statutory Procurement Audit Trail
+            </h4>
+            <span className="text-xs font-mono text-slate-400">
+              Audit Period: {timeframe.toUpperCase()}
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {filteredPOs.map(p => (
+              <div key={p.id} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-white flex items-center gap-2">
+                      {p.poNumber} &bull; {p.vendorName}
+                      <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded font-mono">
+                        {p.status}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      Line: {p.quantity}x {p.item} (£{p.unitPrice} / unit) &bull; Authorized by {p.approvedBy || 'Management'}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right font-mono">
+                  <div className="font-bold text-white">£{p.amount.toFixed(2)}</div>
+                  <div className="text-[10px] text-slate-500">{p.createdAt}</div>
+                </div>
               </div>
-              <div className="text-xs text-slate-400 space-y-1">
-                <div><span className="text-slate-500">Contact:</span> {v.contact}</div>
-                <div><span className="text-slate-500">Email:</span> {v.email}</div>
-                <div><span className="text-slate-500">VAT:</span> {v.vatNumber}</div>
-                <div><span className="text-slate-500">Terms:</span> {v.paymentTerms}</div>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Modal: Raise PO */}
+      {/* MODAL 1: RAISE PURCHASE ORDER */}
       {showPOModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <h3 className="text-base font-bold text-white">Raise Official Purchase Order</h3>
-            <form onSubmit={handleCreatePO} className="space-y-3 text-xs">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
               <div>
-                <label className="text-slate-400 block mb-1">Select Supplier / Vendor</label>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Plus className="w-4 h-4 text-indigo-400" /> Raise Authorized Purchase Order
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">Directly commitments inventory to warehouse receiving.</p>
+              </div>
+              <button onClick={() => setShowPOModal(false)} className="text-slate-400 hover:text-white p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreatePO} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Select Approved Vendor</label>
                 <select
+                  required
                   value={newPO.vendorName}
                   onChange={(e) => setNewPO({ ...newPO, vendorName: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white"
-                  required
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
                 >
                   <option value="">-- Choose Vendor --</option>
-                  {vendors.map((v) => (
-                    <option key={v.id} value={v.name}>{v.name}</option>
+                  {vendors.map(v => (
+                    <option key={v.id} value={v.name}>{v.name} ({v.paymentTerms})</option>
                   ))}
                 </select>
               </div>
+
               <div>
-                <label className="text-slate-400 block mb-1">Line Item Description</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Item Title / Category</label>
                 <input
                   type="text"
-                  placeholder="e.g. 500 units raw corrugated materials"
+                  required
+                  placeholder="e.g. Export Shipping Cartons"
+                  value={newPO.item}
+                  onChange={(e) => setNewPO({ ...newPO, item: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Quantity</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={newPO.quantity}
+                    onChange={(e) => setNewPO({ ...newPO, quantity: parseInt(e.target.value) || 1 })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Unit Price (£)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={newPO.unitPrice}
+                    onChange={(e) => setNewPO({ ...newPO, unitPrice: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Detailed Specifications</label>
+                <input
+                  type="text"
+                  placeholder="Optional specifications or delivery bay instructions"
                   value={newPO.description}
                   onChange={(e) => setNewPO({ ...newPO, description: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white"
-                  required
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
-              <div>
-                <label className="text-slate-400 block mb-1">Total Net Amount (£)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={newPO.amount}
-                  onChange={(e) => setNewPO({ ...newPO, amount: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white"
-                  required
-                />
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex justify-between text-xs font-mono">
+                <span className="text-slate-400">Total Net Commitment:</span>
+                <span className="text-white font-bold">£{(Number(newPO.quantity) * Number(newPO.unitPrice)).toFixed(2)}</span>
               </div>
-              <div className="flex justify-end gap-2 pt-2">
+
+              <div className="flex items-center justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowPOModal(false)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-semibold text-white"
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs"
                 >
-                  Authorize & Issue PO
+                  Issue Purchase Order
                 </button>
               </div>
             </form>
@@ -249,79 +902,226 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
         </div>
       )}
 
-      {/* Modal: Register Vendor */}
-      {showVendorModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <h3 className="text-base font-bold text-white">Register New Supplier / Vendor</h3>
-            <form onSubmit={handleCreateVendor} className="space-y-3 text-xs">
+      {/* MODAL 2: LOG RECEIVED QUOTE */}
+      {showQuoteModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
               <div>
-                <label className="text-slate-400 block mb-1">Company / Vendor Name</label>
-                <input
-                  type="text"
-                  value={newVendor.name}
-                  onChange={(e) => setNewVendor({ ...newVendor, name: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white"
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <FileSpreadsheet className="w-4 h-4 text-amber-400" /> Log Supplier Quote Tender
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">Record received quotes for pricing audit comparison.</p>
+              </div>
+              <button onClick={() => setShowQuoteModal(false)} className="text-slate-400 hover:text-white p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateQuote} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Supplier / Vendor</label>
+                <select
                   required
-                />
+                  value={newQuote.vendorName}
+                  onChange={(e) => setNewQuote({ ...newQuote, vendorName: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="">-- Choose Vendor --</option>
+                  {vendors.map(v => (
+                    <option key={v.id} value={v.name}>{v.name}</option>
+                  ))}
+                </select>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-400 block mb-1">Contact Name</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Quote Reference</label>
                   <input
                     type="text"
-                    value={newVendor.contact}
-                    onChange={(e) => setNewVendor({ ...newVendor, contact: e.target.value })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white"
+                    placeholder="e.g. Q-9481"
+                    value={newQuote.quoteRef}
+                    onChange={(e) => setNewQuote({ ...newQuote, quoteRef: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
                   />
                 </div>
                 <div>
-                  <label className="text-slate-400 block mb-1">Email</label>
-                  <input
-                    type="email"
-                    value={newVendor.email}
-                    onChange={(e) => setNewVendor({ ...newVendor, email: e.target.value })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-slate-400 block mb-1">VAT Number</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Item Spec</label>
                   <input
                     type="text"
-                    value={newVendor.vatNumber}
-                    onChange={(e) => setNewVendor({ ...newVendor, vatNumber: e.target.value })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white"
+                    required
+                    placeholder="e.g. Wooden Pallets"
+                    value={newQuote.item}
+                    onChange={(e) => setNewQuote({ ...newQuote, item: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Quantity</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={newQuote.quantity}
+                    onChange={(e) => setNewQuote({ ...newQuote, quantity: parseInt(e.target.value) || 1 })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
                   />
                 </div>
                 <div>
-                  <label className="text-slate-400 block mb-1">Payment Terms</label>
-                  <select
-                    value={newVendor.paymentTerms}
-                    onChange={(e) => setNewVendor({ ...newVendor, paymentTerms: e.target.value })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white"
-                  >
-                    <option value="Net 14">Net 14 Days</option>
-                    <option value="Net 30">Net 30 Days</option>
-                    <option value="Net 60">Net 60 Days</option>
-                    <option value="Pre-payment">Pre-payment Required</option>
-                  </select>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Unit Price (£)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={newQuote.unitPrice}
+                    onChange={(e) => setNewQuote({ ...newQuote, unitPrice: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
+                  />
                 </div>
               </div>
-              <div className="flex justify-end gap-2 pt-2">
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Lead Time (Days)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newQuote.leadTimeDays}
+                    onChange={(e) => setNewQuote({ ...newQuote, leadTimeDays: parseInt(e.target.value) || 1 })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Valid Until Date</label>
+                  <input
+                    type="date"
+                    value={newQuote.validUntil}
+                    onChange={(e) => setNewQuote({ ...newQuote, validUntil: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex justify-between text-xs font-mono">
+                <span className="text-slate-400">Total Tender Value:</span>
+                <span className="text-amber-400 font-bold">£{(Number(newQuote.quantity) * Number(newQuote.unitPrice)).toFixed(2)}</span>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowVendorModal(false)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  onClick={() => setShowQuoteModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-semibold text-white"
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs"
                 >
-                  Save Vendor
+                  Save Quote Tender
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: REGISTER VENDOR */}
+      {showVendorModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Building className="w-4 h-4 text-indigo-400" /> Onboard Authorized Supplier
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">Register vendor details and payment settlement terms.</p>
+              </div>
+              <button onClick={() => setShowVendorModal(false)} className="text-slate-400 hover:text-white p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRegisterVendor} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Company Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Northern Pallets Ltd"
+                  value={newVendor.name}
+                  onChange={(e) => setNewVendor({ ...newVendor, name: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Contact Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. David Brown"
+                    value={newVendor.contact}
+                    onChange={(e) => setNewVendor({ ...newVendor, contact: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    placeholder="orders@vendor.co.uk"
+                    value={newVendor.email}
+                    onChange={(e) => setNewVendor({ ...newVendor, email: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">VAT Reg Number</label>
+                  <input
+                    type="text"
+                    placeholder="GB 998 1029 44"
+                    value={newVendor.vatNumber}
+                    onChange={(e) => setNewVendor({ ...newVendor, vatNumber: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Payment Terms</label>
+                  <select
+                    value={newVendor.paymentTerms}
+                    onChange={(e) => setNewVendor({ ...newVendor, paymentTerms: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="Pre-payment">Pre-payment</option>
+                    <option value="Net 14">Net 14 Days</option>
+                    <option value="Net 30">Net 30 Days</option>
+                    <option value="Net 60">Net 60 Days</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowVendorModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs"
+                >
+                  Register Vendor
                 </button>
               </div>
             </form>
