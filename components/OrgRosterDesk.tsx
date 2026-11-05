@@ -384,7 +384,7 @@ export default function OrgRosterDesk({ currentRepName, userRole, contacts, onDa
                     onChange={(e) => setNewHire({ ...newHire, department: e.target.value as DepartmentRole })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200"
                   >
-                    {(['Sales', 'Operations', 'Finance', 'HR', 'Marketing', 'IT'] as DepartmentRole[]).map(d => (
+                    {(['Sales', 'Operations', 'Procurement', 'Finance', 'HR', 'Marketing', 'IT'] as DepartmentRole[]).map(d => (
                       <option key={d} value={d}>{d}</option>
                     ))}
                   </select>
