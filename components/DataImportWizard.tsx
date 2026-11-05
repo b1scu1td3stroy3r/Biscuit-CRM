@@ -54,7 +54,7 @@ export default function DataImportWizard({ onImportComplete, currentUser }: Data
       const sampleCSV = 
 `Contact Name,Company,Email,Phone,Pipeline Stage,CRN,Deal Value,Account Manager,Billing Address
 "Alice Smith","Acme Technologies","alice@company.co.uk","+44 20 7946 0111","Sales","12345678","5000","${currentUser}","100 High Street, London"
-"Bob Jenkins","Starlight Media","bob@starlight.co.uk","+44 20 7946 0222","Lead","87654321","3200","${currentUser}","42 Park Lane, Manchester"
+"Primary Contact","Client Enterprise","contact@client-enterprise.co.uk","+44 20 7946 0222","Lead","87654321","3200","${currentUser}","42 Park Lane, Manchester"
 "Claire Watson","Vanguard Retail","claire@vanguard.org","+44 20 7946 0333","Prospect","","12000","${currentUser}","12 Commercial Rd, Leeds"`;
       
       const blob = new Blob([sampleCSV], { type: 'text/csv;charset=utf-8;' });
@@ -67,7 +67,7 @@ export default function DataImportWizard({ onImportComplete, currentUser }: Data
       const sampleCSV = 
 `Full Name,Job Title,Department,Hierarchy Tier
 "Alex Smith","Commercial Executive","Sales","Staff"
-"Sarah Jenkins","Commercial Lead","Sales","Team Leader"
+"Team Leader","Commercial Lead","Sales","Team Leader"
 "Liam Hughes","Fulfillment Director","Operations","Manager"
 "Elena Rostova","Head of Accounts","Finance","Staff"
 "Mark Thompson","IT Support Engineer","IT","Staff"`;

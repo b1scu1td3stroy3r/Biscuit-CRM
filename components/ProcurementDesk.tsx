@@ -147,7 +147,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
     }
     return [
       { id: '1', name: 'Apex Packaging Ltd', contact: 'Mark Evans', email: 'orders@apexpkg.co.uk', vatNumber: 'GB 891 2341 02', status: 'Approved', paymentTerms: 'Net 30' },
-      { id: '2', name: 'Global Logistics Hub', contact: 'Sarah Jenkins', email: 'accounts@globallogistics.com', vatNumber: 'GB 102 9982 44', status: 'Approved', paymentTerms: 'Net 14' },
+      { id: '2', name: 'Global Logistics Hub', contact: 'Logistics Coordinator', email: 'accounts@globallogistics.com', vatNumber: 'GB 102 9982 44', status: 'Approved', paymentTerms: 'Net 14' },
       { id: '3', name: 'Raw Material Direct', contact: 'Liam Scott', email: 'sales@rawdirect.co.uk', vatNumber: 'GB 443 1120 99', status: 'Pending Review', paymentTerms: 'Pre-payment' },
     ];
   });

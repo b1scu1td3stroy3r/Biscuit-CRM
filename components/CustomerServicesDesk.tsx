@@ -126,7 +126,7 @@ export default function CustomerServicesDesk({
     {
       id: "TKT-102",
       ticketNumber: "TKT-102",
-      customerName: "Bob Jenkins",
+      customerName: "Client Account Contact",
       company: "Starlight Media",
       accountRef: "ACC-10002",
       type: "Complaint",

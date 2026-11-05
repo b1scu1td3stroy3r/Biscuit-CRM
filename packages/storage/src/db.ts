@@ -72,6 +72,81 @@ export interface LeaveRequest {
   [key: string]: any;
 }
 
+export type ITTicketCategory = 'Hardware' | 'Software' | 'Network' | 'Access/RBAC' | 'Workstation' | 'Security';
+export type ITTicketPriority = 'P1-Critical' | 'P2-High' | 'P3-Medium' | 'P4-Low';
+export type ITTicketStatus = 'Triage' | 'In Progress' | 'Waiting on User' | 'Resolved' | 'Closed';
+
+export interface ITTicketAuditLog {
+  timestamp: string;
+  actor: string;
+  action: string;
+  details?: string;
+}
+
+export interface ITTicket {
+  id?: number;
+  ticketNumber: string;
+  title: string;
+  description: string;
+  category: ITTicketCategory;
+  priority: ITTicketPriority;
+  status: ITTicketStatus;
+  requesterName: string;
+  requesterEmail: string;
+  requesterDepartment: DepartmentRole;
+  assignedTechId?: number;
+  assignedTechName?: string;
+  resolutionNotes?: string;
+  slaBreached?: boolean;
+  targetResolutionHours: number;
+  history: ITTicketAuditLog[];
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+  closedAt?: string;
+}
+
+export type InternalTicketType = 'IT' | 'HR';
+export interface InternalTicket {
+  id?: number;
+  ticketNumber: string;
+  type: InternalTicketType;
+  category: string;
+  subject: string;
+  details: string;
+  priority: 'Low' | 'Medium' | 'High' | 'Urgent';
+  status: 'Open' | 'In Review' | 'Resolved' | 'Closed';
+  requesterName: string;
+  requesterEmail: string;
+  requesterDepartment: DepartmentRole;
+  assignedTo?: string;
+  resolutionNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type KPIHorizon = 'Daily' | 'Weekly' | 'Monthly';
+export type KPIMetric = 'deals_closed' | 'revenue_booked' | 'calls_logged' | 'tickets_resolved' | 'slas_met' | 'custom';
+
+export interface TeamKPI {
+  id?: number;
+  managerId: number;
+  managerName: string;
+  targetScope: 'Team' | 'Individual';
+  targetEmployeeId?: number;
+  targetEmployeeName?: string;
+  department: DepartmentRole;
+  horizon: KPIHorizon;
+  metric: KPIMetric;
+  title: string;
+  targetValue: number;
+  unit: string;
+  startDate: string;
+  endDate: string;
+  createdAt: string;
+  notes?: string;
+}
+
 export interface CompanySetting {
   id?: string;
   key: string;
@@ -189,6 +264,9 @@ export class BiscuitDB extends Dexie {
   callLogs!: Table<CallLog, number>;
   whiteboardNotes!: Table<WhiteboardNote, number>;
   settings!: Table<CompanySetting, string>;
+  itTickets!: Table<ITTicket, number>;
+  internalTickets!: Table<InternalTicket, number>;
+  teamKpis!: Table<TeamKPI, number>;
 
   constructor() {
     super('biscuit_crm_db');
@@ -205,6 +283,12 @@ export class BiscuitDB extends Dexie {
       callLogs: '++id, contactId, phoneNumber, callerName, timestamp',
       whiteboardNotes: '++id, author, department, createdAt',
       settings: 'key, updatedAt'
+    });
+
+    this.version(5).stores({
+      itTickets: '++id, ticketNumber, category, priority, status, requesterEmail, assignedTechId, createdAt, resolvedAt',
+      internalTickets: '++id, ticketNumber, type, category, priority, status, requesterEmail, createdAt',
+      teamKpis: '++id, managerId, targetScope, targetEmployeeId, department, horizon, metric, startDate, endDate, createdAt'
     });
   }
 }
