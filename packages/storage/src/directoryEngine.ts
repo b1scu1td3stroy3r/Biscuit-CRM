@@ -8,6 +8,20 @@ export interface EnterpriseStaffMember {
   sourceDepartment: string;
   assignedRole: DepartmentRole;
   hierarchyTier: 'Trainee' | 'Specialist' | 'Senior Specialist' | 'Team Leader' | 'Manager' | 'Managing Director';
+  clearanceLevel: 1 | 2 | 3 | 4 | 5;
+  customPrivileges: {
+    canViewTeamPipelines?: boolean;
+    canViewFinancials?: boolean;
+    canApproveLeave?: boolean;
+    canAuditActivity?: boolean;
+    canReallocateAccounts?: boolean;
+    canRunPayroll?: boolean;
+    canApproveRefunds?: boolean;
+    canDispatchWms?: boolean;
+    canIssuePO?: boolean;
+    canManageRoster?: boolean;
+    allowedViewTabs?: string[];
+  };
 }
 
 /**
@@ -16,49 +30,86 @@ export interface EnterpriseStaffMember {
 export function classifyStaffRole(jobTitle: string = '', department: string = ''): {
   role: DepartmentRole;
   tier: EnterpriseStaffMember['hierarchyTier'];
+  clearanceLevel: 1 | 2 | 3 | 4 | 5;
+  customPrivileges: EnterpriseStaffMember['customPrivileges'];
 } {
   const text = `${jobTitle} ${department}`.toLowerCase();
 
   // Tier classification
   let tier: EnterpriseStaffMember['hierarchyTier'] = 'Specialist';
+  let clearanceLevel: 1 | 2 | 3 | 4 | 5 = 1;
+
   if (text.includes('managing director') || text.includes('chief executive') || text.includes('founder') || text.includes('owner') || text.includes('general manager')) {
     tier = 'Managing Director';
-  } else if (text.includes('director') || text.includes('head of') || text.includes('manager') || text.includes('vp') || text.includes('lead')) {
+    clearanceLevel = 5;
+  } else if (text.includes('director') || text.includes('vp')) {
+    tier = 'Manager'; // Director level management
+    clearanceLevel = 4;
+  } else if (text.includes('head of') || text.includes('manager')) {
     tier = 'Manager';
+    clearanceLevel = 3;
+  } else if (text.includes('team leader') || text.includes('team lead') || text.includes('supervisor')) {
+    tier = 'Team Leader';
+    clearanceLevel = 2;
   } else if (text.includes('senior') || text.includes('principal')) {
     tier = 'Senior Specialist';
+    clearanceLevel = 1;
   } else if (text.includes('junior') || text.includes('trainee') || text.includes('intern') || text.includes('assistant')) {
     tier = 'Trainee';
+    clearanceLevel = 1;
+  }
+
+  // Base capabilities derived from tier and role
+  const privs: EnterpriseStaffMember['customPrivileges'] = {
+    canViewTeamPipelines: clearanceLevel >= 2,
+    canApproveLeave: clearanceLevel >= 2,
+    canAuditActivity: clearanceLevel >= 3,
+    canReallocateAccounts: clearanceLevel >= 3,
+    canManageRoster: clearanceLevel >= 4 || text.includes('hr manager') || text.includes('it manager')
+  };
+
+  // Functional overrides decoupled from title
+  if (text.includes('payroll') || text.includes('finance') || text.includes('hr manager')) {
+    privs.canRunPayroll = true;
+  }
+  if (text.includes('support') || text.includes('customer service') || text.includes('cs manager') || text.includes('cs team leader')) {
+    if (clearanceLevel >= 2) privs.canApproveRefunds = true;
+  }
+  if (text.includes('warehouse') || text.includes('dispatch') || text.includes('picker') || text.includes('packer') || text.includes('operations')) {
+    privs.canDispatchWms = true;
+  }
+  if (text.includes('procurement') || text.includes('purchasing') || text.includes('buyer')) {
+    privs.canIssuePO = true;
   }
 
   // Role classification
-  if (tier === 'Managing Director' || text.includes('executive')) {
-    return { role: 'MD', tier: 'Managing Director' };
+  if (tier === 'Managing Director' || text.includes('managing director') || text.includes('chief executive')) {
+    return { role: 'MD', tier: 'Managing Director', clearanceLevel: 5, customPrivileges: { ...privs, canRunPayroll: true, canApproveRefunds: true, canDispatchWms: true, canIssuePO: true } };
   }
   if (text.includes('support') || text.includes('customer') || text.includes('service') || text.includes('helpdesk')) {
-    return { role: 'Customer Services', tier };
+    return { role: 'Customer Services', tier, clearanceLevel, customPrivileges: privs };
   }
   if (text.includes('warehouse') || text.includes('logistics') || text.includes('dispatch') || text.includes('operation') || text.includes('fulfillment')) {
-    return { role: 'Operations', tier };
+    return { role: 'Operations', tier, clearanceLevel, customPrivileges: privs };
   }
   if (text.includes('procurement') || text.includes('purchasing') || text.includes('buyer') || text.includes('vendor') || text.includes('stock')) {
-    return { role: 'Procurement', tier };
+    return { role: 'Procurement', tier, clearanceLevel, customPrivileges: privs };
   }
   if (text.includes('finance') || text.includes('account') || text.includes('billing') || text.includes('credit control') || text.includes('treasury')) {
-    return { role: 'Finance', tier };
+    return { role: 'Finance', tier, clearanceLevel, customPrivileges: privs };
   }
   if (text.includes('marketing') || text.includes('growth') || text.includes('campaign') || text.includes('seo') || text.includes('outreach')) {
-    return { role: 'Marketing', tier };
+    return { role: 'Marketing', tier, clearanceLevel, customPrivileges: privs };
   }
   if (text.includes('it') || text.includes('developer') || text.includes('software') || text.includes('systems') || text.includes('network') || text.includes('infra')) {
-    return { role: 'IT', tier };
+    return { role: 'IT', tier, clearanceLevel, customPrivileges: privs };
   }
   if (text.includes('hr') || text.includes('people') || text.includes('talent') || text.includes('recruitment')) {
-    return { role: 'HR', tier };
+    return { role: 'HR', tier, clearanceLevel, customPrivileges: privs };
   }
 
   // Default fallback is Sales & Commercial
-  return { role: 'Sales', tier };
+  return { role: 'Sales', tier, clearanceLevel, customPrivileges: privs };
 }
 
 /**
@@ -75,7 +126,7 @@ export async function fetchMicrosoftDirectory(msAccessToken: string): Promise<En
 
     return users.map((u: any) => {
       const email = u.mail || u.userPrincipalName || '';
-      const { role, tier } = classifyStaffRole(u.jobTitle || '', u.department || '');
+      const { role, tier, clearanceLevel, customPrivileges } = classifyStaffRole(u.jobTitle || '', u.department || '');
       return {
         id: u.id || `ms-${Math.random().toString(36).substring(2, 9)}`,
         name: u.displayName || email.split('@')[0],
@@ -83,7 +134,9 @@ export async function fetchMicrosoftDirectory(msAccessToken: string): Promise<En
         jobTitle: u.jobTitle || 'Business User',
         sourceDepartment: u.department || 'General',
         assignedRole: role,
-        hierarchyTier: tier
+        hierarchyTier: tier,
+        clearanceLevel,
+        customPrivileges
       };
     });
   } catch (err) {
@@ -115,7 +168,20 @@ export async function fetchGoogleDirectory(googleAccessToken: string): Promise<E
         jobTitle: 'Managing Director / Owner',
         sourceDepartment: 'Executive',
         assignedRole: 'MD',
-        hierarchyTier: 'Managing Director'
+        hierarchyTier: 'Managing Director',
+        clearanceLevel: 5,
+        customPrivileges: {
+          canViewTeamPipelines: true,
+          canViewFinancials: true,
+          canApproveLeave: true,
+          canAuditActivity: true,
+          canReallocateAccounts: true,
+          canRunPayroll: true,
+          canApproveRefunds: true,
+          canDispatchWms: true,
+          canIssuePO: true,
+          canManageRoster: true
+        }
       }];
     }
     const data = await res.json();
@@ -125,7 +191,7 @@ export async function fetchGoogleDirectory(googleAccessToken: string): Promise<E
       const email = u.primaryEmail || '';
       const title = u.organizations?.[0]?.title || '';
       const dept = u.organizations?.[0]?.department || '';
-      const { role, tier } = classifyStaffRole(title, dept);
+      const { role, tier, clearanceLevel, customPrivileges } = classifyStaffRole(title, dept);
       return {
         id: u.id || `g-${Math.random().toString(36).substring(2, 9)}`,
         name: u.name?.fullName || email.split('@')[0],
@@ -133,7 +199,9 @@ export async function fetchGoogleDirectory(googleAccessToken: string): Promise<E
         jobTitle: title || 'Team Member',
         sourceDepartment: dept || 'General',
         assignedRole: role,
-        hierarchyTier: tier
+        hierarchyTier: tier,
+        clearanceLevel,
+        customPrivileges
       };
     });
   } catch (err) {
