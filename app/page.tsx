@@ -1332,6 +1332,7 @@ export default function Dashboard() {
             triggerDebouncedSync();
           }}
           currentUser={senderName}
+          employees={roster}
         />
       )}
 
