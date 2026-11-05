@@ -1248,7 +1248,7 @@ export default function Dashboard() {
 
       {/* Navigation Tab Bar */}
       <div className="flex bg-slate-900/90 border border-slate-800 rounded-xl p-1 gap-1 mb-6 shadow-sm overflow-x-auto">
-        {(isMD || allowedTabs.includes('kanban')) && (
+        {(!isMD && allowedTabs.includes('kanban')) && (
           <button
             onClick={() => setViewMode('kanban')}
             className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'kanban' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
@@ -1257,7 +1257,7 @@ export default function Dashboard() {
           </button>
         )}
 
-        {(isMD || allowedTabs.includes('telephony')) && (
+        {(!isMD && allowedTabs.includes('telephony')) && (
           <button
             onClick={() => setViewMode('telephony')}
             className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'telephony' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
@@ -1266,7 +1266,7 @@ export default function Dashboard() {
           </button>
         )}
 
-        {(isMD || allowedTabs.includes('mailchimp')) && (
+        {(!isMD && allowedTabs.includes('mailchimp')) && (
           <button
             onClick={() => setViewMode('mailchimp')}
             className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${viewMode === 'mailchimp' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
@@ -1371,7 +1371,7 @@ export default function Dashboard() {
                 </button>
               )}
 
-              {(isMD || allowedTabs.includes('telephony')) && (
+              {(!isMD && allowedTabs.includes('telephony')) && (
                 <button
                   onClick={() => { setViewMode('telephony'); setToolsMenuOpen(false); }}
                   className={`w-full text-left px-4 py-2 text-xs flex items-center gap-2 hover:bg-slate-800/80 transition ${
@@ -1382,7 +1382,7 @@ export default function Dashboard() {
                 </button>
               )}
 
-              {(isMD || allowedTabs.includes('mailchimp')) && (
+              {(!isMD && allowedTabs.includes('mailchimp')) && (
                 <button
                   onClick={() => { setViewMode('mailchimp'); setToolsMenuOpen(false); }}
                   className={`w-full text-left px-4 py-2 text-xs flex items-center gap-2 hover:bg-slate-800/80 transition ${
