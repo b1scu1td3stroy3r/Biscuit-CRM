@@ -1,62 +1,215 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { 
-  PoundSterling, FileSpreadsheet, CheckCircle2, Clock, Send, 
-  ExternalLink, Mail, Plus, AlertCircle, RefreshCw, Key, CreditCard, PhoneCall, Copy, Check
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  PoundSterling,
+  FileSpreadsheet,
+  CheckCircle2,
+  Clock,
+  Send,
+  ExternalLink,
+  Mail,
+  Plus,
+  AlertCircle,
+  RefreshCw,
+  Key,
+  CreditCard,
+  PhoneCall,
+  Copy,
+  Check,
+  ShieldAlert,
+  ShieldCheck,
+  Building2,
+  Search,
+  Filter,
+  Users,
+  Download,
+  Printer,
+  Calendar,
+  ArrowUpRight,
+  ArrowDownLeft,
+  DollarSign,
+  TrendingUp,
+  Truck,
+  Ban,
+  FileText,
+  X
 } from 'lucide-react';
-import { Contact, db } from '../packages/storage/src/db';
+import { Contact, EmployeeProfile, db } from '../packages/storage/src/db';
+
+export type TimeframeFilter = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'last_year';
+export type LedgerFilter = 'all' | 'incomings' | 'outgoings';
 
 interface FinanceDeskProps {
   contacts: Contact[];
   onContactUpdated: () => void;
   currentUser: string;
+  employees?: EmployeeProfile[];
 }
 
-export default function FinanceDesk({ contacts, onContactUpdated, currentUser }: FinanceDeskProps) {
+export interface CreditNote {
+  id: string;
+  creditNoteNumber: string;
+  contactId: number;
+  customerName: string;
+  accountNumber: string;
+  amount: number;
+  reason: string;
+  issuedAt: string;
+  issuedBy: string;
+}
+
+export interface FinancialTransaction {
+  id: string;
+  type: 'incoming' | 'outgoing';
+  category: 'Customer Settlement' | 'Payroll' | 'Shipping Courier' | 'Supplier Payable' | 'Credit Note Adjustment';
+  reference: string;
+  counterparty: string;
+  grossAmount: number;
+  vatAmount: number;
+  netAmount: number;
+  status: 'Settled' | 'Pending' | 'On Hold';
+  paymentMethod: 'Stripe Card' | 'BACS / Direct Debit' | 'Bank Transfer' | 'Direct Payroll' | 'Credit Offset';
+  timestamp: string;
+}
+
+export default function FinanceDesk({
+  contacts,
+  onContactUpdated,
+  currentUser,
+  employees = []
+}: FinanceDeskProps) {
+  // Navigation & View Filters
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'credit_control' | 'payments' | 'payroll' | 'ledger'>('dashboard');
+  const [timeframe, setTimeframe] = useState<TimeframeFilter>('month');
+  const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Stripe Configuration
   const [stripeKey, setStripeKey] = useState('');
   const [isKeySaved, setIsKeySaved] = useState(false);
   const [generatingId, setGeneratingId] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
-  // Over-the-phone (MOTO) modal state
+  // MOTO Phone Terminal Modal
   const [phonePaymentContact, setPhonePaymentContact] = useState<Contact | null>(null);
   const [cardForm, setCardForm] = useState({
     cardNumber: '',
     expMonth: '',
     expYear: '',
     cvc: '',
-    amount: '',
+    amount: ''
   });
   const [isCharging, setIsCharging] = useState(false);
   const [chargeError, setChargeError] = useState<string | null>(null);
   const [chargeSuccess, setChargeSuccess] = useState(false);
-  const [totalShippingDeduction, setTotalShippingDeduction] = useState<number>(0);
 
-  const calculateShippingDeduction = () => {
-    if (typeof window !== "undefined") {
+  // Credit Note Modal State
+  const [creditNoteContact, setCreditNoteContact] = useState<Contact | null>(null);
+  const [creditNoteAmount, setCreditNoteAmount] = useState('');
+  const [creditNoteReason, setCreditNoteReason] = useState('Goodwill / Damaged packaging');
+
+  // Companies House Check State
+  const [chQuery, setChQuery] = useState('');
+  const [chResults, setChResults] = useState<any[]>([]);
+  const [chLoading, setChLoading] = useState(false);
+  const [chSelectedContact, setChSelectedContact] = useState<Contact | null>(null);
+
+  // Payroll Disbursement Modal State
+  const [payrollModalEmployee, setPayrollModalEmployee] = useState<EmployeeProfile | null>(null);
+  const [payrollAmount, setPayrollAmount] = useState('');
+  const [payrollType, setPayrollType] = useState<'Monthly Salary' | 'Commission Bonus' | 'Expense Reimbursement'>('Monthly Salary');
+
+  // Manual Outgoing Expense Modal State
+  const [isOutgoingModalOpen, setIsOutgoingModalOpen] = useState(false);
+  const [outgoingForm, setOutgoingForm] = useState({
+    payee: '',
+    category: 'Supplier Payable' as 'Supplier Payable' | 'Shipping Courier',
+    amount: '',
+    reference: '',
+    method: 'Bank Transfer' as 'Bank Transfer' | 'BACS / Direct Debit'
+  });
+
+  // Local Storage Ledger & Credit Notes
+  const [transactions, setTransactions] = useState<FinancialTransaction[]>(() => {
+    if (typeof window !== 'undefined') {
       try {
-        const savedCosts = JSON.parse(localStorage.getItem("biscuit_crm_daily_shipping_costs") || "[]");
-        const total = savedCosts.reduce((acc: number, item: any) => acc + (Number(item.amount) || 0), 0);
-        setTotalShippingDeduction(total);
+        const saved = localStorage.getItem('biscuit_crm_financial_transactions');
+        if (saved) return JSON.parse(saved);
       } catch (err) {
-        console.warn("Failed to read shipping costs from localStorage", err);
+        console.warn('Failed to load transactions', err);
       }
     }
-  };
+    return [];
+  });
+
+  const [creditNotes, setCreditNotes] = useState<CreditNote[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('biscuit_crm_credit_notes');
+        if (saved) return JSON.parse(saved);
+      } catch (err) {
+        console.warn('Failed to load credit notes', err);
+      }
+    }
+    return [];
+  });
+
+  // Sync state to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('biscuit_crm_financial_transactions', JSON.stringify(transactions));
+    } catch (err) {
+      console.warn('Failed to persist transactions', err);
+    }
+  }, [transactions]);
 
   useEffect(() => {
-    calculateShippingDeduction();
-    const handleFeeUpdate = () => calculateShippingDeduction();
-    window.addEventListener("shipping_fee_updated", handleFeeUpdate);
-    return () => window.removeEventListener("shipping_fee_updated", handleFeeUpdate);
-  }, []);
+    try {
+      localStorage.setItem('biscuit_crm_credit_notes', JSON.stringify(creditNotes));
+    } catch (err) {
+      console.warn('Failed to persist credit notes', err);
+    }
+  }, [creditNotes]);
 
+  // Load Stripe Key & Courier Shipping Costs
   useEffect(() => {
-    const saved = localStorage.getItem('biscuit_crm_stripe_secret_key');
-    if (saved) {
-      setStripeKey(saved);
+    const savedKey = localStorage.getItem('biscuit_crm_stripe_secret_key');
+    if (savedKey) {
+      setStripeKey(savedKey);
       setIsKeySaved(true);
+    }
+
+    // Pull shipping costs from Operations Desk if not yet synchronized
+    try {
+      const shippingDeductions = JSON.parse(localStorage.getItem('biscuit_crm_daily_shipping_costs') || '[]');
+      if (shippingDeductions.length > 0) {
+        setTransactions(prev => {
+          const existingRefs = new Set(prev.map(t => t.reference));
+          const newEntries: FinancialTransaction[] = [];
+          for (const item of shippingDeductions) {
+            const ref = `SHIP-${item.orderNumber}`;
+            if (!existingRefs.has(ref)) {
+              newEntries.push({
+                id: `TX-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+                type: 'outgoing',
+                category: 'Shipping Courier',
+                reference: ref,
+                counterparty: `${item.carrier} (${item.customer || 'Dispatch'})`,
+                grossAmount: Number(item.amount) || 0,
+                vatAmount: (Number(item.amount) || 0) * 0.2,
+                netAmount: (Number(item.amount) || 0) * 0.8,
+                status: 'Settled',
+                paymentMethod: 'Bank Transfer',
+                timestamp: item.timestamp || new Date().toISOString()
+              });
+            }
+          }
+          return newEntries.length > 0 ? [...prev, ...newEntries] : prev;
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to sync shipping deductions', err);
     }
   }, []);
 
@@ -67,463 +220,1451 @@ export default function FinanceDesk({ contacts, onContactUpdated, currentUser }:
     alert('Stripe Secret Key saved locally.');
   };
 
-  const handleUpdateStatus = async (contact: Contact, newStatus: Contact['invoiceStatus']) => {
-    if (!contact.id) return;
+  // Helper to record a transaction in ledger
+  const recordTransaction = (tx: Omit<FinancialTransaction, 'id'>) => {
+    const newTx: FinancialTransaction = {
+      ...tx,
+      id: `TX-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+    };
+    setTransactions(prev => [newTx, ...prev]);
+  };
 
-    if (newStatus === 'Paid') {
-      await db.newsFeed.add({
-        title: `Invoice Settled: ${contact.company || contact.name} paid in full`,
-        content: `Finance logged settlement of £${Number(contact.dealValue || 0).toLocaleString()} for ${contact.name} [Ref: ${contact.accountNumber}].`,
-        category: 'Invoice Paid',
-        department: 'Finance',
-        actor: currentUser,
-        badgeColor: 'border-emerald-500/30 text-emerald-300 bg-emerald-500/10',
-        createdAt: new Date().toISOString(),
-      });
+  // Timeframe calculation filter
+  const isWithinTimeframe = (timestampStr: string, tf: TimeframeFilter) => {
+    const date = new Date(timestampStr);
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    if (tf === 'day') {
+      return date >= startOfToday;
+    }
+    if (tf === 'week') {
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return date >= oneWeekAgo;
+    }
+    if (tf === 'month') {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      return date >= startOfMonth;
+    }
+    if (tf === 'quarter') {
+      const currentQuarter = Math.floor(now.getMonth() / 3);
+      const startOfQuarter = new Date(now.getFullYear(), currentQuarter * 3, 1);
+      return date >= startOfQuarter;
+    }
+    if (tf === 'year') {
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      return date >= startOfYear;
+    }
+    if (tf === 'last_year') {
+      const startOfLastYear = new Date(now.getFullYear() - 1, 0, 1);
+      const endOfLastYear = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59);
+      return date >= startOfLastYear && date <= endOfLastYear;
+    }
+    return true;
+  };
+
+  // Aggregate Metrics based on timeframe
+  const metrics = useMemo(() => {
+    // 1. Incomings: Contacts Paid or manual ledger entries
+    const paidContacts = contacts.filter(c => {
+      if (c.invoiceStatus !== 'Paid') return false;
+      const refDate = c.updatedAt || c.invoiceDate || new Date().toISOString();
+      return isWithinTimeframe(refDate, timeframe);
+    });
+
+    const contactIntake = paidContacts.reduce((sum, c) => sum + (Number(c.dealValue) || 0), 0);
+
+    // 2. Extra Incomings from ledger
+    const ledgerIncomings = transactions
+      .filter(t => t.type === 'incoming' && t.status === 'Settled' && isWithinTimeframe(t.timestamp, timeframe))
+      .reduce((sum, t) => sum + t.grossAmount, 0);
+
+    const totalIntake = contactIntake + ledgerIncomings;
+
+    // 3. Outgoings: Ledger outgoings in timeframe (Payroll, Courier, Suppliers)
+    const ledgerOutgoings = transactions
+      .filter(t => t.type === 'outgoing' && t.status === 'Settled' && isWithinTimeframe(t.timestamp, timeframe))
+      .reduce((sum, t) => sum + t.grossAmount, 0);
+
+    // 4. Shipping deductions logged directly
+    let shippingCosts = 0;
+    try {
+      const shippingDeductions = JSON.parse(localStorage.getItem('biscuit_crm_daily_shipping_costs') || '[]');
+      shippingCosts = shippingDeductions
+        .filter((s: any) => isWithinTimeframe(s.timestamp, timeframe))
+        .reduce((sum: number, s: any) => sum + (Number(s.amount) || 0), 0);
+    } catch {
+      shippingCosts = 0;
     }
 
+    const totalOutgoings = ledgerOutgoings;
+    const netRevenue = Math.max(0, totalIntake - shippingCosts);
+    const operatingProfit = totalIntake - totalOutgoings;
+
+    return {
+      intake: totalIntake,
+      outgoings: totalOutgoings,
+      netRevenue,
+      operatingProfit,
+      shippingCosts
+    };
+  }, [contacts, transactions, timeframe]);
+
+  // Credit Control: Update Terms, Limits, and Holds
+  const handleUpdateCreditStatus = async (
+    contact: Contact,
+    updates: {
+      creditLimit?: number;
+      creditTerms?: 'Upfront / Pro-Forma Only' | 'Net 14' | 'Net 30' | 'Net 60';
+      creditHold?: boolean;
+      upfrontOnly?: boolean;
+    }
+  ) => {
+    if (!contact.id) return;
     await db.contacts.update(contact.id, {
-      invoiceStatus: newStatus,
-      updatedAt: new Date().toISOString(),
+      ...updates,
+      updatedAt: new Date().toISOString()
+    });
+
+    await db.auditLogs.add({
+      timestamp: new Date().toISOString(),
+      actor: currentUser,
+      action: 'CREDIT_TERMS_ADJUSTED',
+      entityId: contact.accountNumber,
+      details: `Credit settings amended: ${JSON.stringify(updates)}`
     });
 
     onContactUpdated();
   };
 
-  // 1. Generate Stripe Hosted Payment Link (Cards + BACS Direct Debit)
-  const handleGeneratePaymentLink = async (contact: Contact) => {
+  // Run Companies House Insolvency / Status Check
+  const handleSearchCompaniesHouse = async (query: string) => {
+    if (!query.trim()) return;
+    setChLoading(true);
+    setChResults([]);
+
+    try {
+      const res = await fetch(`/api/companies-house?q=${encodeURIComponent(query.trim())}`);
+      const data = await res.json();
+      setChResults(data.items || []);
+    } catch (err) {
+      alert('Failed to query Companies House API.');
+    } finally {
+      setChLoading(false);
+    }
+  };
+
+  const handleVerifyWithCompaniesHouse = async (contact: Contact, company: any) => {
     if (!contact.id) return;
-    if (!stripeKey) {
-      alert('Please enter and save your Stripe Secret Key at the top of the Finance Desk first.');
+    const isInsolvent =
+      company.company_status?.toLowerCase().includes('dissolved') ||
+      company.company_status?.toLowerCase().includes('liquidation') ||
+      company.company_status?.toLowerCase().includes('insolvent');
+
+    await db.contacts.update(contact.id, {
+      crn: company.company_number,
+      companyHouseStatus: company.company_status,
+      companyVerifiedAt: new Date().toISOString(),
+      creditHold: isInsolvent ? true : contact.creditHold,
+      upfrontOnly: isInsolvent ? true : contact.upfrontOnly,
+      updatedAt: new Date().toISOString()
+    });
+
+    await db.newsFeed.add({
+      title: `Companies House Check: ${company.title}`,
+      content: `Verification confirmed CRN ${company.company_number} (${company.company_status}). ${
+        isInsolvent ? '⚠️ WARNING: Company flagged for insolvency/liquidation. Account placed on credit hold.' : 'Corporate profile clean.'
+      }`,
+      category: 'Credit Control',
+      department: 'Finance',
+      actor: currentUser,
+      badgeColor: isInsolvent ? 'border-rose-500/40 text-rose-400 bg-rose-500/10' : 'border-emerald-500/30 text-emerald-300 bg-emerald-500/10',
+      createdAt: new Date().toISOString()
+    });
+
+    setChSelectedContact(null);
+    setChResults([]);
+    onContactUpdated();
+    alert(`✅ Companies House verification recorded for ${contact.company || contact.name}.`);
+  };
+
+  // Raise Credit Note
+  const handleRaiseCreditNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!creditNoteContact || !creditNoteContact.id) return;
+    const amt = parseFloat(creditNoteAmount);
+    if (isNaN(amt) || amt <= 0) {
+      alert('Please enter a valid credit note amount.');
       return;
     }
 
-    const amount = Number(contact.dealValue) || 100;
-    setGeneratingId(contact.id);
+    const crnNumber = `CRN-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newCreditNote: CreditNote = {
+      id: `CRN-${Date.now()}`,
+      creditNoteNumber: crnNumber,
+      contactId: creditNoteContact.id,
+      customerName: creditNoteContact.company || creditNoteContact.name,
+      accountNumber: creditNoteContact.accountNumber,
+      amount: amt,
+      reason: creditNoteReason,
+      issuedAt: new Date().toISOString(),
+      issuedBy: currentUser
+    };
 
-    try {
-      const res = await fetch('/api/stripe/checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apiKey: stripeKey.trim(),
-          contact,
-          amount,
-          description: `Invoice for ${contact.company || contact.name} [${contact.accountNumber}]`,
-        }),
-      });
+    setCreditNotes(prev => [newCreditNote, ...prev]);
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to create payment link.');
+    // Deduct amount from dealValue or record as credit adjustment
+    const updatedValue = Math.max(0, (Number(creditNoteContact.dealValue) || 0) - amt);
+    await db.contacts.update(creditNoteContact.id, {
+      dealValue: updatedValue,
+      updatedAt: new Date().toISOString()
+    });
 
-      await db.contacts.update(contact.id, {
-        paymentLinkUrl: data.url,
-        invoiceStatus: 'Issued',
-        updatedAt: new Date().toISOString(),
-      });
+    // Record in ledger
+    recordTransaction({
+      type: 'outgoing',
+      category: 'Credit Note Adjustment',
+      reference: crnNumber,
+      counterparty: creditNoteContact.company || creditNoteContact.name,
+      grossAmount: amt,
+      vatAmount: amt * 0.2,
+      netAmount: amt * 0.8,
+      status: 'Settled',
+      paymentMethod: 'Credit Offset',
+      timestamp: new Date().toISOString()
+    });
 
-      onContactUpdated();
-    } catch (err: any) {
-      alert(`Stripe Error: ${err.message}`);
-    } finally {
-      setGeneratingId(null);
-    }
+    await db.newsFeed.add({
+      title: `Credit Note Issued: ${crnNumber} (£${amt.toFixed(2)})`,
+      content: `Finance issued credit note to ${creditNoteContact.company || creditNoteContact.name} [Ref: ${creditNoteContact.accountNumber}]. Reason: ${creditNoteReason}.`,
+      category: 'Credit Note',
+      department: 'Finance',
+      actor: currentUser,
+      badgeColor: 'border-amber-500/30 text-amber-300 bg-amber-500/10',
+      createdAt: new Date().toISOString()
+    });
+
+    setCreditNoteContact(null);
+    setCreditNoteAmount('');
+    onContactUpdated();
+    alert(`✅ Credit note ${crnNumber} issued successfully for £${amt.toFixed(2)}.`);
   };
 
-  // 2. Open Gmail with Invoice & Payment Link pre-filled
-  const handleEmailPaymentLink = (contact: Contact) => {
-    const grossValue = Number(contact.dealValue || 0) * 1.2;
-    const recipient = encodeURIComponent(contact.email);
-    const subject = encodeURIComponent(`Invoice & Payment Request: ${contact.company || contact.name} [${contact.accountNumber}]`);
-    const body = encodeURIComponent(
-      `Dear ${contact.name},\n\n` +
-      `Please find details of your invoice for ${contact.company || 'your account'}.\n\n` +
-      `INVOICE SUMMARY:\n` +
-      `• Account Reference: ${contact.accountNumber}\n` +
-      `• Subtotal: £${Number(contact.dealValue || 0).toLocaleString()}\n` +
-      `• VAT (20%): £${(Number(contact.dealValue || 0) * 0.2).toLocaleString()}\n` +
-      `• Total Due: £${grossValue.toLocaleString()}\n\n` +
-      `PAYMENT OPTIONS:\n` +
-      `You can settle this invoice securely online by Credit/Debit Card or UK BACS Direct Debit via the following link:\n` +
-      `${contact.paymentLinkUrl || '(Payment link generating...)'}\n\n` +
-      `Thank you for your business.\n\n` +
-      `Finance Department\n` +
-      `${currentUser}`
-    );
-
-    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${recipient}&su=${subject}&body=${body}`, '_blank');
-  };
-
-  // 3. Process Over-the-Phone MOTO Payment
-  const handleExecutePhonePayment = async (e: React.FormEvent) => {
+  // Disburse Payroll Run
+  const handleDisbursePayroll = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phonePaymentContact || !phonePaymentContact.id) return;
-    setIsCharging(true);
-    setChargeError(null);
-
-    try {
-      const res = await fetch('/api/stripe/charge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apiKey: stripeKey.trim(),
-          contact: phonePaymentContact,
-          amount: Number(cardForm.amount),
-          cardNumber: cardForm.cardNumber,
-          expMonth: cardForm.expMonth,
-          expYear: cardForm.expYear,
-          cvc: cardForm.cvc,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Payment declined.');
-
-      await db.contacts.update(phonePaymentContact.id, {
-        invoiceStatus: 'Paid',
-        paymentMethodUsed: 'card',
-        stripePaymentIntentId: data.paymentIntentId,
-        updatedAt: new Date().toISOString(),
-      });
-
-      await db.newsFeed.add({
-        title: `Over-the-Phone Payment: £${Number(cardForm.amount).toLocaleString()} collected`,
-        content: `${currentUser} successfully captured phone payment from ${phonePaymentContact.name} (${phonePaymentContact.company || 'Direct'}).`,
-        category: 'Invoice Paid',
-        department: 'Finance',
-        actor: currentUser,
-        badgeColor: 'border-emerald-500/30 text-emerald-300 bg-emerald-500/10',
-        createdAt: new Date().toISOString(),
-      });
-
-      setChargeSuccess(true);
-      setTimeout(() => {
-        setPhonePaymentContact(null);
-        setChargeSuccess(false);
-        onContactUpdated();
-      }, 1500);
-    } catch (err: any) {
-      setChargeError(err.message || 'Payment failed.');
-    } finally {
-      setIsCharging(false);
+    if (!payrollModalEmployee) return;
+    const amt = parseFloat(payrollAmount);
+    if (isNaN(amt) || amt <= 0) {
+      alert('Please enter a valid disbursement amount.');
+      return;
     }
+
+    const payRef = `PAY-${payrollModalEmployee.name.split(' ')[0].toUpperCase()}-${new Date().getMonth() + 1}`;
+    recordTransaction({
+      type: 'outgoing',
+      category: 'Payroll',
+      reference: payRef,
+      counterparty: `${payrollModalEmployee.name} (${payrollModalEmployee.department} - ${payrollModalEmployee.role})`,
+      grossAmount: amt,
+      vatAmount: 0,
+      netAmount: amt,
+      status: 'Settled',
+      paymentMethod: 'Direct Payroll',
+      timestamp: new Date().toISOString()
+    });
+
+    await db.newsFeed.add({
+      title: `Payroll Disbursed: ${payrollModalEmployee.name}`,
+      content: `Disbursed £${amt.toLocaleString()} (${payrollType}) to ${payrollModalEmployee.name} [${payrollModalEmployee.department}].`,
+      category: 'Payroll',
+      department: 'Finance',
+      actor: currentUser,
+      badgeColor: 'border-indigo-500/30 text-indigo-300 bg-indigo-500/10',
+      createdAt: new Date().toISOString()
+    });
+
+    setPayrollModalEmployee(null);
+    setPayrollAmount('');
+    alert(`✅ Payroll payment of £${amt.toFixed(2)} completed for ${payrollModalEmployee.name}.`);
   };
 
-  const totalPipelineValue = contacts.reduce((sum, c) => sum + (Number(c.dealValue) || 0), 0);
-  const grossSettled = contacts
-    .filter(c => c.invoiceStatus === 'Paid')
-    .reduce((sum, c) => sum + (Number(c.dealValue) || 0), 0);
-  const netSettledRevenue = Math.max(0, grossSettled - totalShippingDeduction);
+  // Record Manual Outgoing (Supplier bill / expense)
+  const handleRecordOutgoing = (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = parseFloat(outgoingForm.amount);
+    if (isNaN(amt) || amt <= 0 || !outgoingForm.payee.trim()) {
+      alert('Please provide a payee and valid amount.');
+      return;
+    }
+
+    recordTransaction({
+      type: 'outgoing',
+      category: outgoingForm.category,
+      reference: outgoingForm.reference || `OUT-${Math.floor(1000 + Math.random() * 9000)}`,
+      counterparty: outgoingForm.payee,
+      grossAmount: amt,
+      vatAmount: amt * 0.2,
+      netAmount: amt * 0.8,
+      status: 'Settled',
+      paymentMethod: outgoingForm.method,
+      timestamp: new Date().toISOString()
+    });
+
+    setIsOutgoingModalOpen(false);
+    setOutgoingForm({
+      payee: '',
+      category: 'Supplier Payable',
+      amount: '',
+      reference: '',
+      method: 'Bank Transfer'
+    });
+    alert('✅ Outgoing expense recorded in ledger.');
+  };
+
+  // Mark invoice settled via direct BACS or Bank Transfer
+  const handleMarkDirectSettled = async (contact: Contact) => {
+    if (!contact.id) return;
+    const amt = Number(contact.dealValue) || 0;
+
+    await db.contacts.update(contact.id, {
+      invoiceStatus: 'Paid',
+      paymentMethod: 'BACS / Bank Transfer',
+      updatedAt: new Date().toISOString()
+    });
+
+    recordTransaction({
+      type: 'incoming',
+      category: 'Customer Settlement',
+      reference: contact.invoiceNumber || `INV-${contact.accountNumber}`,
+      counterparty: contact.company || contact.name,
+      grossAmount: amt,
+      vatAmount: amt * 0.2,
+      netAmount: amt * 0.8,
+      status: 'Settled',
+      paymentMethod: 'BACS / Direct Debit',
+      timestamp: new Date().toISOString()
+    });
+
+    await db.newsFeed.add({
+      title: `Invoice Settled: ${contact.company || contact.name}`,
+      content: `Finance marked £${amt.toLocaleString()} paid in full via BACS Direct Debit for ${contact.name}.`,
+      category: 'Invoice Paid',
+      department: 'Finance',
+      actor: currentUser,
+      badgeColor: 'border-emerald-500/30 text-emerald-300 bg-emerald-500/10',
+      createdAt: new Date().toISOString()
+    });
+
+    onContactUpdated();
+  };
+
+  // Generate Audit & Financial Report Export
+  const handleGenerateAuditReport = () => {
+    const reportData = [
+      ['Report Type', `Financial Audit & Cash Flow Report (${timeframe.toUpperCase()})`],
+      ['Generated By', currentUser],
+      ['Timestamp', new Date().toISOString()],
+      ['', ''],
+      ['SUMMARY METRICS', ''],
+      ['Gross Intake (Receivables)', `£${metrics.intake.toFixed(2)}`],
+      ['Total Outgoings (Overheads & Payroll)', `£${metrics.outgoings.toFixed(2)}`],
+      ['Carrier Shipping Deductions', `£${metrics.shippingCosts.toFixed(2)}`],
+      ['Net Settled Revenue', `£${metrics.netRevenue.toFixed(2)}`],
+      ['Net Operating Profit', `£${metrics.operatingProfit.toFixed(2)}`],
+      ['', ''],
+      ['TRANSACTION LEDGER BREAKDOWN', ''],
+      ['Date', 'Type', 'Category', 'Reference', 'Counterparty', 'Gross (£)', '20% VAT (£)', 'Net (£)', 'Payment Method', 'Status']
+    ];
+
+    const filteredTx = transactions.filter(t => isWithinTimeframe(t.timestamp, timeframe));
+    filteredTx.forEach(t => {
+      reportData.push([
+        t.timestamp.substring(0, 10),
+        t.type.toUpperCase(),
+        t.category,
+        t.reference,
+        `"${t.counterparty.replace(/"/g, '""')}"`,
+        t.grossAmount.toFixed(2),
+        t.vatAmount.toFixed(2),
+        t.netAmount.toFixed(2),
+        t.paymentMethod,
+        t.status
+      ]);
+    });
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + reportData.map(e => e.join(',')).join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `BiscuitCRM_Financial_Audit_${timeframe}_${new Date().toISOString().substring(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Filtered contacts and ledger transactions
+  const filteredContacts = contacts.filter(c => {
+    const term = searchTerm.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(term) ||
+      (c.company && c.company.toLowerCase().includes(term)) ||
+      c.accountNumber.toLowerCase().includes(term)
+    );
+  });
+
+  const displayTransactions = transactions.filter(t => {
+    if (!isWithinTimeframe(t.timestamp, timeframe)) return false;
+    if (ledgerFilter === 'incomings') return t.type === 'incoming';
+    if (ledgerFilter === 'outgoings') return t.type === 'outgoing';
+    return true;
+  });
 
   return (
     <div className="space-y-6">
-      {/* Stripe Credentials Bar */}
+      {/* Top Banner & Stripe Key Bar */}
       <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-slate-950 border border-slate-800 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
-            <CreditCard className="w-5 h-5" />
+            <PoundSterling className="w-5 h-5" />
           </div>
           <div>
             <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
-              Stripe Payments & UK BACS Direct Debit Desk
+              Financial Operations, Credit Control & Treasury Desk
               {isKeySaved && (
                 <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Live Ready
+                  <CheckCircle2 className="w-3 h-3" /> Stripe Live
                 </span>
               )}
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Enter your Stripe Secret Key to generate Card & BACS payment links and process phone orders.
+              Multi-timeframe cash audits, Companies House insolvency vetting, payroll disburser & credit terms governance.
             </p>
           </div>
         </div>
 
-        <form onSubmit={handleSaveKey} className="flex items-center gap-2 w-full md:w-auto">
-          <input
-            type="password"
-            placeholder="sk_live_... or sk_test_..."
-            value={stripeKey}
-            onChange={(e) => setStripeKey(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono w-60 focus:outline-none focus:border-purple-400"
-            required
-          />
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <form onSubmit={handleSaveKey} className="flex items-center gap-2">
+            <input
+              type="password"
+              placeholder="Stripe Secret Key (sk_live_...)"
+              value={stripeKey}
+              onChange={(e) => setStripeKey(e.target.value)}
+              className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono w-56 focus:outline-none focus:border-purple-400"
+            />
+            <button
+              type="submit"
+              className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition"
+            >
+              Save Key
+            </button>
+          </form>
+
           <button
-            type="submit"
-            className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition"
+            onClick={handleGenerateAuditReport}
+            className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold inline-flex items-center gap-1.5 shadow transition"
           >
-            Save Key
+            <Download className="w-3.5 h-3.5 text-indigo-400" /> Export Audit Report
           </button>
-        </form>
-      </div>
-
-      {/* Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
-          <span className="text-xs text-slate-400 block mb-1">Total Pipeline Bookings</span>
-          <div className="text-xl font-bold font-mono text-slate-100">£{totalPipelineValue.toLocaleString()}</div>
-          <span className="text-[10px] text-slate-500">+ £{(totalPipelineValue * 0.2).toLocaleString()} Output VAT</span>
-        </div>
-
-        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
-          <span className="text-xs text-slate-400 block mb-1">Paid & Settled Revenue</span>
-          <div className="text-xl font-bold font-mono text-emerald-400">£{netSettledRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-          <span className="text-[10px] text-emerald-500/80">Funds captured via Card, BACS, or Bank</span>
-        </div>
-
-        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
-          <span className="text-xs text-slate-400 block mb-1">Pending Invoice Collection</span>
-          <div className="text-xl font-bold font-mono text-amber-400">£{(totalPipelineValue - netSettledRevenue).toLocaleString()}</div>
-          <span className="text-[10px] text-amber-500/80">Awaiting payment link settlement</span>
         </div>
       </div>
 
-      {/* Invoicing & Payments Ledger */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/40 overflow-hidden shadow-sm">
-        <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center">
-          <div>
-            <h4 className="font-semibold text-slate-100 text-sm">Customer Orders & Invoices</h4>
-            <p className="text-xs text-slate-400">Send hosted Card/BACS checkout links or take payments over the phone</p>
-          </div>
-          <span className="text-xs font-mono text-slate-400">{contacts.length} Accounts Monitored</span>
-        </div>
-
-        <table className="w-full text-left text-sm text-slate-300">
-          <thead className="bg-slate-900/80 text-xs uppercase text-slate-400 border-b border-slate-800">
-            <tr>
-              <th className="px-5 py-3">Account No</th>
-              <th className="px-5 py-3">Customer / Company</th>
-              <th className="px-5 py-3">Contract Value</th>
-              <th className="px-5 py-3">Status</th>
-              <th className="px-5 py-3">Online Link (Card & BACS)</th>
-              <th className="px-5 py-3 text-right">Phone Terminal</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800">
-            {contacts.map((c) => {
-              const value = Number(c.dealValue) || 0;
-              const gross = value * 1.2;
-
-              return (
-                <tr key={c.id} className="hover:bg-slate-800/30 transition">
-                  <td className="px-5 py-3.5 font-mono text-emerald-400 font-semibold text-xs">
-                    {c.accountNumber}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <div className="font-semibold text-slate-100">{c.name}</div>
-                    <div className="text-[11px] text-slate-400">{c.company || 'Private'} &bull; {c.email}</div>
-                  </td>
-                  <td className="px-5 py-3.5 font-mono text-xs">
-                    <div className="font-semibold text-slate-200">£{value.toLocaleString()}</div>
-                    <div className="text-[10px] text-slate-500">Gross: £{gross.toLocaleString()}</div>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <select
-                      value={c.invoiceStatus || 'Drafted'}
-                      onChange={(e) => handleUpdateStatus(c, e.target.value as any)}
-                      className={`text-xs font-semibold px-2 py-1 rounded border bg-slate-950 ${
-                        c.invoiceStatus === 'Paid'
-                          ? 'border-emerald-500/40 text-emerald-400'
-                          : c.invoiceStatus === 'Issued'
-                          ? 'border-sky-500/40 text-sky-400'
-                          : 'border-slate-700 text-slate-400'
-                      }`}
-                    >
-                      <option value="Drafted">Drafted</option>
-                      <option value="Issued">Issued</option>
-                      <option value="Paid">Paid</option>
-                    </select>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    {c.paymentLinkUrl ? (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => handleEmailPaymentLink(c)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold transition"
-                          title="Open pre-filled Gmail draft with payment link"
-                        >
-                          <Mail className="w-3 h-3" /> Email Link
-                        </button>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(c.paymentLinkUrl!);
-                            setCopiedId(c.id!);
-                            setTimeout(() => setCopiedId(null), 2000);
-                          }}
-                          className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
-                          title="Copy payment URL"
-                        >
-                          {copiedId === c.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                        </button>
-                        <a
-                          href={c.paymentLinkUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition"
-                          title="Open Checkout"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleGeneratePaymentLink(c)}
-                        disabled={generatingId === c.id}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs font-semibold transition"
-                      >
-                        {generatingId === c.id ? (
-                          <RefreshCw className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <CreditCard className="w-3 h-3" />
-                        )}
-                        Generate Card/BACS Link
-                      </button>
-                    )}
-                  </td>
-                  <td className="px-5 py-3.5 text-right">
-                    <button
-                      onClick={() => {
-                        setPhonePaymentContact(c);
-                        setCardForm({
-                          cardNumber: '',
-                          expMonth: '',
-                          expYear: '',
-                          cvc: '',
-                          amount: String(gross || 100),
-                        });
-                        setChargeError(null);
-                        setChargeSuccess(false);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition"
-                    >
-                      <PhoneCall className="w-3.5 h-3.5" /> Take Card on Call
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Over-the-Phone (MOTO) Virtual Terminal Modal */}
-      {phonePaymentContact && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div>
-                <h3 className="font-bold text-slate-100 text-base flex items-center gap-2">
-                  <CreditCard className="w-4 h-4 text-emerald-400" /> Virtual Terminal: Phone Payment
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Collecting payment from {phonePaymentContact.name} ({phonePaymentContact.company || 'Direct'})
-                </p>
-              </div>
+      {/* Navigation Sub-Tabs & Timeframe Switcher */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-3">
+        {/* Desk View Switcher */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+          {[
+            { id: 'dashboard', label: 'Financial Dashboard', icon: TrendingUp },
+            { id: 'credit_control', label: 'Credit Control & Terms', icon: ShieldCheck },
+            { id: 'payments', label: 'Receive Incomings', icon: ArrowDownLeft },
+            { id: 'payroll', label: 'Staff Payroll & Outgoings', icon: Users },
+            { id: 'ledger', label: 'Granular Audit Ledger', icon: FileSpreadsheet }
+          ].map(tab => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
               <button
-                onClick={() => setPhonePaymentContact(null)}
-                className="text-slate-400 hover:text-slate-200"
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
+                  active
+                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20'
+                    : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800'
+                }`}
               >
-                ✕
+                <Icon className="w-3.5 h-3.5" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Multi-Timeframe Filter Pill */}
+        <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+          <Calendar className="w-3.5 h-3.5 text-slate-500 ml-2" />
+          {[
+            { id: 'day', label: 'Day (Today)' },
+            { id: 'week', label: 'Week' },
+            { id: 'month', label: 'Month' },
+            { id: 'quarter', label: 'Quarter' },
+            { id: 'year', label: 'Year' },
+            { id: 'last_year', label: 'Last Year' }
+          ].map(tf => (
+            <button
+              key={tf.id}
+              onClick={() => setTimeframe(tf.id as TimeframeFilter)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                timeframe === tf.id
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              }`}
+            >
+              {tf.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* KPI Cards: Dynamic across Day / Week / Month / Quarter / Year / Last Year */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Gross Intake */}
+        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+          <div className="flex items-center justify-between text-slate-400 text-xs">
+            <span>Gross Incomings (Intake)</span>
+            <ArrowDownLeft className="w-4 h-4 text-emerald-400" />
+          </div>
+          <div className="text-2xl font-black text-emerald-400 font-mono">
+            £{metrics.intake.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <p className="text-[11px] text-slate-500">Sales settlements captured in {timeframe.replace('_', ' ')}</p>
+        </div>
+
+        {/* Total Outgoings */}
+        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+          <div className="flex items-center justify-between text-slate-400 text-xs">
+            <span>Total Outgoings & Payroll</span>
+            <ArrowUpRight className="w-4 h-4 text-rose-400" />
+          </div>
+          <div className="text-2xl font-black text-rose-400 font-mono">
+            £{metrics.outgoings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <p className="text-[11px] text-slate-500 flex items-center justify-between">
+            <span>Disbursements + suppliers</span>
+            {metrics.shippingCosts > 0 && (
+              <span className="text-amber-400 text-[10px] font-mono">
+                Inc. £{metrics.shippingCosts.toFixed(2)} courier
+              </span>
+            )}
+          </p>
+        </div>
+
+        {/* Net Revenue */}
+        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+          <div className="flex items-center justify-between text-slate-400 text-xs">
+            <span>Net Settled Revenue</span>
+            <DollarSign className="w-4 h-4 text-sky-400" />
+          </div>
+          <div className="text-2xl font-black text-sky-400 font-mono">
+            £{metrics.netRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <p className="text-[11px] text-slate-500">Gross intake minus carrier logistics fees</p>
+        </div>
+
+        {/* Net Operating Profit */}
+        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+          <div className="flex items-center justify-between text-slate-400 text-xs">
+            <span>Net Operating Margin</span>
+            <TrendingUp className="w-4 h-4 text-purple-400" />
+          </div>
+          <div className={`text-2xl font-black font-mono ${metrics.operatingProfit >= 0 ? 'text-purple-300' : 'text-rose-400'}`}>
+            £{metrics.operatingProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <p className="text-[11px] text-slate-500">Intake minus total outgoings</p>
+        </div>
+      </div>
+
+      {/* VIEW 1: DASHBOARD OVERVIEW */}
+      {activeTab === 'dashboard' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Quick Actions & Compliance */}
+          <div className="lg:col-span-1 space-y-4">
+            <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-amber-400" /> Credit Exposure & Holds Summary
+              </h4>
+              <div className="space-y-2.5 text-xs text-slate-300">
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                  <span>Accounts on Credit Hold</span>
+                  <span className="font-bold text-rose-400 font-mono">
+                    {contacts.filter(c => c.creditHold).length} Accounts
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                  <span>Upfront Payment Only</span>
+                  <span className="font-bold text-amber-400 font-mono">
+                    {contacts.filter(c => c.upfrontOnly).length} Accounts
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                  <span>Credit Notes Raised</span>
+                  <span className="font-bold text-indigo-400 font-mono">
+                    {creditNotes.length} Issued (£{creditNotes.reduce((s, c) => s + c.amount, 0).toFixed(2)})
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  onClick={() => setIsOutgoingModalOpen(true)}
+                  className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition"
+                >
+                  <Plus className="w-4 h-4" /> Record Outgoing / Supplier Payable
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Financial Stream */}
+          <div className="lg:col-span-2 p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <Clock className="w-4 h-4 text-indigo-400" /> Recent Treasury Movements ({timeframe})
+              </h4>
+              <button
+                onClick={() => setActiveTab('ledger')}
+                className="text-xs font-semibold text-purple-400 hover:text-purple-300"
+              >
+                View Full Ledger &rarr;
               </button>
             </div>
 
-            {chargeError && (
-              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{chargeError}</span>
-              </div>
-            )}
-
-            {chargeSuccess ? (
-              <div className="p-6 text-center space-y-2">
-                <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="w-6 h-6" />
+            <div className="divide-y divide-slate-800">
+              {displayTransactions.slice(0, 5).map(tx => (
+                <div key={tx.id} className="py-3 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-3">
+                    <span className={`p-2 rounded-lg border ${
+                      tx.type === 'incoming'
+                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                        : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                    }`}>
+                      {tx.type === 'incoming' ? <ArrowDownLeft className="w-3.5 h-3.5" /> : <ArrowUpRight className="w-3.5 h-3.5" />}
+                    </span>
+                    <div>
+                      <div className="font-bold text-white">{tx.counterparty}</div>
+                      <div className="text-[10px] text-slate-400 font-mono">{tx.reference} &bull; {tx.category}</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`font-bold font-mono ${tx.type === 'incoming' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {tx.type === 'incoming' ? '+' : '-'}£{tx.grossAmount.toFixed(2)}
+                    </div>
+                    <div className="text-[10px] text-slate-500">{tx.timestamp.substring(0, 10)}</div>
+                  </div>
                 </div>
-                <h4 className="font-bold text-slate-100 text-sm">Payment Captured Successfully!</h4>
-                <p className="text-xs text-slate-400">Invoice marked as Paid and broadcast to company newsfeed.</p>
-              </div>
-            ) : (
-              <form onSubmit={handleExecutePhonePayment} className="space-y-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Amount to Charge (£ GBP)</label>
-                  <input
-                    type="number"
-                    value={cardForm.amount}
-                    onChange={(e) => setCardForm({ ...cardForm, amount: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-emerald-400 font-bold focus:outline-none focus:border-emerald-400"
-                    required
-                  />
+              ))}
+              {displayTransactions.length === 0 && (
+                <div className="py-8 text-center text-xs text-slate-500">
+                  No treasury movements logged in this timeframe ({timeframe}).
                 </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
+      {/* VIEW 2: CREDIT CONTROL & COMPANIES HOUSE STATUS */}
+      {activeTab === 'credit_control' && (
+        <div className="space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="relative w-full md:w-80">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search company, account ref, or contact..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-purple-400"
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-800">
+            <table className="w-full text-left text-xs text-slate-300">
+              <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                <tr>
+                  <th className="py-3 px-4">Account Ref</th>
+                  <th className="py-3 px-4">Company & CRN</th>
+                  <th className="py-3 px-4">Companies House Status</th>
+                  <th className="py-3 px-4">Credit Terms</th>
+                  <th className="py-3 px-4">Credit Limit / Balance</th>
+                  <th className="py-3 px-4">Account Hold</th>
+                  <th className="py-3 px-4 text-right">Credit Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 bg-slate-900/60">
+                {filteredContacts.map(contact => {
+                  const dealVal = Number(contact.dealValue) || 0;
+                  const limit = Number(contact.creditLimit) || 0;
+                  const isOverLimit = limit > 0 && dealVal > limit;
+
+                  return (
+                    <tr key={contact.id} className="hover:bg-slate-800/40 transition">
+                      <td className="py-3 px-4 font-mono font-bold text-purple-300 align-middle">
+                        {contact.accountNumber}
+                      </td>
+                      <td className="py-3 px-4 align-middle">
+                        <div className="font-bold text-white">{contact.company || contact.name}</div>
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          CRN: {contact.crn || 'Unregistered / Sole Trader'}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 align-middle">
+                        {contact.companyHouseStatus ? (
+                          <div className="space-y-0.5">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                              contact.companyHouseStatus.toLowerCase().includes('active')
+                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                                : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                            }`}>
+                              {contact.companyHouseStatus.toUpperCase()}
+                            </span>
+                            <div className="text-[9px] text-slate-500">
+                              Checked {contact.companyVerifiedAt ? contact.companyVerifiedAt.substring(0, 10) : 'Recently'}
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setChSelectedContact(contact);
+                              setChQuery(contact.company || contact.name);
+                              handleSearchCompaniesHouse(contact.company || contact.name);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 hover:bg-indigo-500/20 font-bold text-[10px] inline-flex items-center gap-1 transition"
+                          >
+                            <Building2 className="w-3 h-3" /> Check CH & Insolvency
+                          </button>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 align-middle">
+                        <select
+                          value={contact.creditTerms || 'Net 30'}
+                          onChange={(e) => handleUpdateCreditStatus(contact, { creditTerms: e.target.value as any })}
+                          className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-200 font-mono focus:outline-none focus:border-purple-400"
+                        >
+                          <option value="Upfront / Pro-Forma Only">Upfront / Pro-Forma</option>
+                          <option value="Net 14">Net 14 Days</option>
+                          <option value="Net 30">Net 30 Days</option>
+                          <option value="Net 60">Net 60 Days</option>
+                        </select>
+                      </td>
+                      <td className="py-3 px-4 align-middle">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-slate-400">Limit:</span>
+                          <input
+                            type="number"
+                            defaultValue={contact.creditLimit || 5000}
+                            onBlur={(e) => handleUpdateCreditStatus(contact, { creditLimit: parseFloat(e.target.value) || 0 })}
+                            className="w-20 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-xs text-slate-200 font-mono"
+                          />
+                        </div>
+                        <div className={`text-[10px] font-mono mt-0.5 ${isOverLimit ? 'text-rose-400 font-bold' : 'text-slate-500'}`}>
+                          Bal: £{dealVal.toLocaleString()} {isOverLimit && '(Exceeds Limit!)'}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 align-middle">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleUpdateCreditStatus(contact, { creditHold: !contact.creditHold })}
+                            className={`px-2 py-1 rounded text-[10px] font-bold border transition ${
+                              contact.creditHold
+                                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+                            }`}
+                          >
+                            {contact.creditHold ? 'ON HOLD (Blocked)' : 'Good Standing'}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-right space-x-1.5 align-middle">
+                        <button
+                          onClick={() => setCreditNoteContact(contact)}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold text-[11px] inline-flex items-center gap-1 transition"
+                          title="Raise Credit Note"
+                        >
+                          <FileText className="w-3 h-3" /> Issue Credit Note
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW 3: RECEIVE PAYMENTS (INCOMINGS) */}
+      {activeTab === 'payments' && (
+        <div className="space-y-4">
+          <div className="overflow-x-auto rounded-xl border border-slate-800">
+            <table className="w-full text-left text-xs text-slate-300">
+              <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                <tr>
+                  <th className="py-3 px-4">Invoice / Account</th>
+                  <th className="py-3 px-4">Customer</th>
+                  <th className="py-3 px-4">Deal Value (£)</th>
+                  <th className="py-3 px-4">20% Output VAT</th>
+                  <th className="py-3 px-4">Gross Due</th>
+                  <th className="py-3 px-4">Invoice Status</th>
+                  <th className="py-3 px-4 text-right">Payment Capture</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 bg-slate-900/60">
+                {filteredContacts.map(contact => {
+                  const dealVal = Number(contact.dealValue) || 0;
+                  const vat = dealVal * 0.2;
+                  const gross = dealVal + vat;
+
+                  return (
+                    <tr key={contact.id} className="hover:bg-slate-800/40 transition">
+                      <td className="py-3 px-4 font-mono font-bold text-purple-300">
+                        {contact.invoiceNumber || `INV-${contact.accountNumber}`}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="font-bold text-white">{contact.company || contact.name}</div>
+                        <div className="text-[10px] text-slate-400">{contact.email}</div>
+                      </td>
+                      <td className="py-3 px-4 font-mono">£{dealVal.toLocaleString()}</td>
+                      <td className="py-3 px-4 font-mono text-slate-400">£{vat.toLocaleString()}</td>
+                      <td className="py-3 px-4 font-mono font-bold text-emerald-400">£{gross.toLocaleString()}</td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                          contact.invoiceStatus === 'Paid'
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                            : contact.invoiceStatus === 'Issued'
+                            ? 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        }`}>
+                          {contact.invoiceStatus || 'Draft'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right space-x-2">
+                        {contact.invoiceStatus !== 'Paid' ? (
+                          <>
+                            <button
+                              onClick={() => handleMarkDirectSettled(contact)}
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] inline-flex items-center gap-1 transition"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Direct BACS Paid
+                            </button>
+                            <button
+                              onClick={() => {
+                                setPhonePaymentContact(contact);
+                                setCardForm(prev => ({ ...prev, amount: gross.toString() }));
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-[11px] inline-flex items-center gap-1 transition"
+                            >
+                              <PhoneCall className="w-3.5 h-3.5" /> Virtual MOTO Card
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-[11px] text-emerald-400 font-semibold inline-flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Settled in Full
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW 4: STAFF PAYROLL & DISBURSEMENTS */}
+      {activeTab === 'payroll' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-bold text-white flex items-center gap-2">
+              <Users className="w-4 h-4 text-purple-400" /> Active Employee Roster & Payroll Disburser
+            </h4>
+            <span className="text-xs text-slate-400">
+              {employees.length} Employees registered in Roster
+            </span>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-800">
+            <table className="w-full text-left text-xs text-slate-300">
+              <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                <tr>
+                  <th className="py-3 px-4">Employee</th>
+                  <th className="py-3 px-4">Department & Role</th>
+                  <th className="py-3 px-4">Tier / Level</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4 text-right">Payroll Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 bg-slate-900/60">
+                {employees.map(emp => (
+                  <tr key={emp.id || emp.name} className="hover:bg-slate-800/40 transition">
+                    <td className="py-3 px-4 font-bold text-white">
+                      {emp.name}
+                      <div className="text-[10px] text-slate-400 font-normal">{emp.email || 'Direct Staff'}</div>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="font-semibold text-slate-200">{emp.department}</span>
+                      <div className="text-[10px] text-slate-400">{emp.role}</div>
+                    </td>
+                    <td className="py-3 px-4 font-mono text-purple-300">
+                      Level {emp.level} ({emp.tier})
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                        emp.status === 'Active'
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                          : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                      }`}>
+                        {emp.status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <button
+                        onClick={() => {
+                          setPayrollModalEmployee(emp);
+                          setPayrollAmount('2500.00');
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] inline-flex items-center gap-1.5 shadow transition"
+                      >
+                        <PoundSterling className="w-3.5 h-3.5" /> Disburse Payment
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {employees.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-slate-500">
+                      No employees currently loaded in roster. Visit the Employee Hub to register staff.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW 5: GRANULAR AUDIT LEDGER */}
+      {activeTab === 'ledger' && (
+        <div className="space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 font-semibold">Ledger Filter:</span>
+              {(['all', 'incomings', 'outgoings'] as LedgerFilter[]).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setLedgerFilter(f)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition capitalize ${
+                    ledgerFilter === f
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+            <div className="text-xs text-slate-400">
+              Showing {displayTransactions.length} transaction entries for {timeframe.replace('_', ' ')}
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-800">
+            <table className="w-full text-left text-xs text-slate-300">
+              <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                <tr>
+                  <th className="py-3 px-4">Date</th>
+                  <th className="py-3 px-4">Ref Code</th>
+                  <th className="py-3 px-4">Type & Category</th>
+                  <th className="py-3 px-4">Counterparty / Payee</th>
+                  <th className="py-3 px-4">Payment Method</th>
+                  <th className="py-3 px-4 text-right">Gross Amount</th>
+                  <th className="py-3 px-4 text-right">20% VAT</th>
+                  <th className="py-3 px-4 text-right">Net Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 bg-slate-900/60">
+                {displayTransactions.map(tx => (
+                  <tr key={tx.id} className="hover:bg-slate-800/40 transition">
+                    <td className="py-3 px-4 font-mono text-slate-400">{tx.timestamp.substring(0, 10)}</td>
+                    <td className="py-3 px-4 font-mono font-bold text-purple-300">{tx.reference}</td>
+                    <td className="py-3 px-4">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border mr-1.5 ${
+                        tx.type === 'incoming'
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                          : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                      }`}>
+                        {tx.type.toUpperCase()}
+                      </span>
+                      <span className="text-slate-300">{tx.category}</span>
+                    </td>
+                    <td className="py-3 px-4 font-bold text-white">{tx.counterparty}</td>
+                    <td className="py-3 px-4 text-slate-400">{tx.paymentMethod}</td>
+                    <td className={`py-3 px-4 font-mono font-bold text-right ${tx.type === 'incoming' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {tx.type === 'incoming' ? '+' : '-'}£{tx.grossAmount.toFixed(2)}
+                    </td>
+                    <td className="py-3 px-4 font-mono text-right text-slate-400">£{tx.vatAmount.toFixed(2)}</td>
+                    <td className="py-3 px-4 font-mono text-right font-semibold text-slate-200">£{tx.netAmount.toFixed(2)}</td>
+                  </tr>
+                ))}
+                {displayTransactions.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="py-8 text-center text-slate-500">
+                      No transactions recorded under this filter.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 1: COMPANIES HOUSE LOOKUP & INSOLVENCY CHECK */}
+      {chSelectedContact && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-indigo-400" />
+                  Companies House Insolvency & Registry Verification
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Auditing corporate credentials for {chSelectedContact.company || chSelectedContact.name}
+                </p>
+              </div>
+              <button
+                onClick={() => setChSelectedContact(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Search registered company name..."
+                value={chQuery}
+                onChange={(e) => setChQuery(e.target.value)}
+                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none focus:border-purple-400"
+              />
+              <button
+                onClick={() => handleSearchCompaniesHouse(chQuery)}
+                disabled={chLoading}
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs"
+              >
+                {chLoading ? 'Searching...' : 'Search CH'}
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {chResults.map((company, idx) => (
+                <div key={idx} className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <div className="font-bold text-white text-xs">{company.title}</div>
+                    <div className="text-[11px] text-slate-400 font-mono">
+                      CRN: {company.company_number} &bull; Status: {company.company_status}
+                    </div>
+                    <div className="text-[10px] text-slate-500">{company.address_snippet}</div>
+                  </div>
+                  <button
+                    onClick={() => handleVerifyWithCompaniesHouse(chSelectedContact, company)}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px]"
+                  >
+                    Verify & Stamp
+                  </button>
+                </div>
+              ))}
+              {chResults.length === 0 && !chLoading && (
+                <div className="py-6 text-center text-xs text-slate-500">
+                  Search a registered company name to verify existence and check for liquidation or insolvency markers.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: ISSUE CREDIT NOTE */}
+      {creditNoteContact && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-amber-400" /> Issue Credit Note
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Account: {creditNoteContact.accountNumber} &bull; {creditNoteContact.company || creditNoteContact.name}
+                </p>
+              </div>
+              <button onClick={() => setCreditNoteContact(null)} className="text-slate-400 hover:text-white p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRaiseCreditNote} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Credit Note Amount (£)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  placeholder="e.g. 150.00"
+                  value={creditNoteAmount}
+                  onChange={(e) => setCreditNoteAmount(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-purple-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Reason for Credit Note</label>
+                <select
+                  value={creditNoteReason}
+                  onChange={(e) => setCreditNoteReason(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-400"
+                >
+                  <option value="Goodwill / Damaged packaging">Goodwill / Damaged packaging</option>
+                  <option value="Pricing / Tariff dispute">Pricing / Tariff dispute</option>
+                  <option value="Returned stock / cancellation">Returned stock / cancellation</option>
+                  <option value="Service disruption SLA credit">Service disruption SLA credit</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setCreditNoteContact(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs"
+                >
+                  Confirm & Issue Credit Note
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: STAFF PAYROLL RUN */}
+      {payrollModalEmployee && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <PoundSterling className="w-5 h-5 text-indigo-400" /> Disburse Staff Payment
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Payee: {payrollModalEmployee.name} ({payrollModalEmployee.department})
+                </p>
+              </div>
+              <button onClick={() => setPayrollModalEmployee(null)} className="text-slate-400 hover:text-white p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleDisbursePayroll} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Disbursement Type</label>
+                <select
+                  value={payrollType}
+                  onChange={(e) => setPayrollType(e.target.value as any)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-400"
+                >
+                  <option value="Monthly Salary">Monthly Salary</option>
+                  <option value="Commission Bonus">Commission Bonus</option>
+                  <option value="Expense Reimbursement">Expense Reimbursement</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Disbursement Amount (£)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  value={payrollAmount}
+                  onChange={(e) => setPayrollAmount(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-purple-400"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPayrollModalEmployee(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs"
+                >
+                  Authorize Disbursement
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: RECORD OUTGOING BILL */}
+      {isOutgoingModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <ArrowUpRight className="w-5 h-5 text-rose-400" /> Record Outgoing / Supplier Payable
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Deducts from gross revenue and enters in audit ledger.
+                </p>
+              </div>
+              <button onClick={() => setIsOutgoingModalOpen(false)} className="text-slate-400 hover:text-white p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRecordOutgoing} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Payee / Supplier</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Packaging Supply Co."
+                  value={outgoingForm.payee}
+                  onChange={(e) => setOutgoingForm({ ...outgoingForm, payee: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Amount (£)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  placeholder="e.g. 450.00"
+                  value={outgoingForm.amount}
+                  onChange={(e) => setOutgoingForm({ ...outgoingForm, amount: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-purple-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Payment Method</label>
+                <select
+                  value={outgoingForm.method}
+                  onChange={(e) => setOutgoingForm({ ...outgoingForm, method: e.target.value as any })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-400"
+                >
+                  <option value="Bank Transfer">Bank Transfer</option>
+                  <option value="BACS / Direct Debit">BACS Direct Debit</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsOutgoingModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs"
+                >
+                  Record Outgoing
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: MOTO VIRTUAL PHONE TERMINAL */}
+      {phonePaymentContact && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <PhoneCall className="w-5 h-5 text-purple-400" /> Over-the-Phone (MOTO) Virtual Terminal
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Capturing payment for {phonePaymentContact.company || phonePaymentContact.name}
+                </p>
+              </div>
+              <button onClick={() => setPhonePaymentContact(null)} className="text-slate-400 hover:text-white p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setIsCharging(true);
+              setChargeError(null);
+
+              try {
+                const res = await fetch('/api/stripe/charge', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    apiKey: stripeKey.trim(),
+                    contact: phonePaymentContact,
+                    amount: Number(cardForm.amount),
+                    cardNumber: cardForm.cardNumber,
+                    expMonth: cardForm.expMonth,
+                    expYear: cardForm.expYear,
+                    cvc: cardForm.cvc,
+                  }),
+                });
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Payment declined.');
+
+                await db.contacts.update(phonePaymentContact.id!, {
+                  invoiceStatus: 'Paid',
+                  paymentMethod: 'Stripe Card',
+                  updatedAt: new Date().toISOString(),
+                });
+
+                recordTransaction({
+                  type: 'incoming',
+                  category: 'Customer Settlement',
+                  reference: `MOTO-${phonePaymentContact.accountNumber}`,
+                  counterparty: phonePaymentContact.company || phonePaymentContact.name,
+                  grossAmount: Number(cardForm.amount),
+                  vatAmount: Number(cardForm.amount) * 0.2,
+                  netAmount: Number(cardForm.amount) * 0.8,
+                  status: 'Settled',
+                  paymentMethod: 'Stripe Card',
+                  timestamp: new Date().toISOString()
+                });
+
+                setChargeSuccess(true);
+                setTimeout(() => {
+                  setPhonePaymentContact(null);
+                  setChargeSuccess(false);
+                  onContactUpdated();
+                }, 1500);
+              } catch (err: any) {
+                setChargeError(err.message || 'Payment failed.');
+              } finally {
+                setIsCharging(false);
+              }
+            }} className="space-y-4">
+              {chargeError && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs">
+                  {chargeError}
+                </div>
+              )}
+              {chargeSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs">
+                  Payment successfully authorized and captured.
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Total Charge (£)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={cardForm.amount}
+                  onChange={(e) => setCardForm({ ...cardForm, amount: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-purple-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Card Number</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="4242 •••• •••• 4242"
+                  value={cardForm.cardNumber}
+                  onChange={(e) => setCardForm({ ...cardForm, cardNumber: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono focus:outline-none focus:border-purple-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">16-Digit Card Number</label>
+                  <label className="block text-[10px] font-semibold text-slate-400 mb-1">MM</label>
                   <input
                     type="text"
-                    placeholder="4242 •••• •••• 4242"
-                    value={cardForm.cardNumber}
-                    onChange={(e) => setCardForm({ ...cardForm, cardNumber: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-slate-100 focus:outline-none focus:border-emerald-400"
                     required
+                    placeholder="12"
+                    value={cardForm.expMonth}
+                    onChange={(e) => setCardForm({ ...cardForm, expMonth: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white font-mono text-center"
                   />
                 </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-400 block mb-1">Exp Month</label>
-                    <input
-                      type="text"
-                      placeholder="MM"
-                      maxLength={2}
-                      value={cardForm.expMonth}
-                      onChange={(e) => setCardForm({ ...cardForm, expMonth: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-100 text-center"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-400 block mb-1">Exp Year</label>
-                    <input
-                      type="text"
-                      placeholder="YYYY"
-                      maxLength={4}
-                      value={cardForm.expYear}
-                      onChange={(e) => setCardForm({ ...cardForm, expYear: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-100 text-center"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-400 block mb-1">CVC</label>
-                    <input
-                      type="password"
-                      placeholder="•••"
-                      maxLength={4}
-                      value={cardForm.cvc}
-                      onChange={(e) => setCardForm({ ...cardForm, cvc: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-100 text-center"
-                      required
-                    />
-                  </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-400 mb-1">YY</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="28"
+                    value={cardForm.expYear}
+                    onChange={(e) => setCardForm({ ...cardForm, expYear: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white font-mono text-center"
+                  />
                 </div>
-
-                <div className="pt-2 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPhonePaymentContact(null)}
-                    className="flex-1 py-2 rounded-lg text-xs text-slate-400 hover:text-white border border-slate-800"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isCharging}
-                    className="flex-1 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition shadow flex items-center justify-center gap-1.5"
-                  >
-                    {isCharging ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CreditCard className="w-3.5 h-3.5" />}
-                    Confirm & Charge (£{cardForm.amount})
-                  </button>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-400 mb-1">CVC</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="•••"
+                    value={cardForm.cvc}
+                    onChange={(e) => setCardForm({ ...cardForm, cvc: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white font-mono text-center"
+                  />
                 </div>
-              </form>
-            )}
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPhonePaymentContact(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCharging}
+                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs"
+                >
+                  {isCharging ? 'Authorizing...' : 'Process MOTO Payment'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
