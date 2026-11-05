@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { 
+import {
+  Layers, 
   Headphones, 
   PhoneIncoming, 
   PhoneCall, 
@@ -64,6 +65,20 @@ export default function CustomerServicesDesk({
   }) => void;
 }) {
   const [activeSubTab, setActiveSubTab] = useState<"calls" | "tickets" | "orders">("calls");
+  // Live Stock Modal for CS & Sales
+  const [showStockModal, setShowStockModal] = useState(false);
+  const [stockSearch, setStockSearch] = useState('');
+  const [stockList, setStockList] = useState<any[]>([]);
+
+  useEffect(() => {
+    try {
+      const items = JSON.parse(localStorage.getItem('biscuit_crm_inventory') || '[]');
+      setStockList(items);
+    } catch (e) {
+      console.warn(e);
+    }
+  }, [showStockModal]);
+
 
   // Inbound Call Simulator State
   const [incomingCall, setIncomingCall] = useState<boolean>(true);
@@ -579,6 +594,77 @@ export default function CustomerServicesDesk({
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+      {/* MODAL: LIVE STOCK INSPECTION FOR CS */}
+      {showStockModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-emerald-400"/> Live Warehouse Stock Ledger (Sales & CS)
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Real-time stock availability verified directly from Goods In receiving.
+                </p>
+              </div>
+              <button onClick={() => setShowStockModal(false)} className="text-slate-400 hover:text-white p-1">
+                ✕
+              </button>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border border-slate-800 max-h-80 overflow-y-auto">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800 sticky top-0">
+                  <tr>
+                    <th className="py-2.5 px-3">SKU</th>
+                    <th className="py-2.5 px-3">Item Name</th>
+                    <th className="py-2.5 px-3 text-right">On Hand</th>
+                    <th className="py-2.5 px-3 text-right">Reserved</th>
+                    <th className="py-2.5 px-3 text-right">Available to Sell</th>
+                    <th className="py-2.5 px-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 bg-slate-900/60 font-mono">
+                  {stockList.map(stk => (
+                    <tr key={stk.id} className="hover:bg-slate-800/40">
+                      <td className="py-2.5 px-3 text-indigo-400 font-bold">{stk.sku}</td>
+                      <td className="py-2.5 px-3 font-sans font-bold text-white">{stk.item}</td>
+                      <td className="py-2.5 px-3 text-right text-slate-200">{stk.onHand}</td>
+                      <td className="py-2.5 px-3 text-right text-amber-400">{stk.reserved}</td>
+                      <td className="py-2.5 px-3 text-right text-emerald-400 font-black text-sm">{stk.available}</td>
+                      <td className="py-2.5 px-3 text-center">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                          stk.available <= stk.reorderLevel
+                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                            : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                        }`}>
+                          {stk.available <= stk.reorderLevel ? 'LOW STOCK' : 'IN STOCK'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {stockList.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-slate-500">
+                        No items currently registered in inventory.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setShowStockModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs"
+              >
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}
