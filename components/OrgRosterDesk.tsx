@@ -319,6 +319,11 @@ export default function OrgRosterDesk({ currentRepName, userRole, contacts, onDa
                 {[
                   { key: 'canViewTeamPipelines', label: 'View Subordinate Team Pipeline' },
                   { key: 'canViewFinancials', label: 'View Deal Values & Invoicing Remittance' },
+                  { key: 'canRunPayroll', label: 'Run & Disburse Staff Payroll (HR / Finance)' },
+                  { key: 'canApproveRefunds', label: 'Authorize CS Customer Refunds & Credits' },
+                  { key: 'canDispatchWms', label: 'Pick, Pack & Dispatch Warehouse Goods (WMS)' },
+                  { key: 'canIssuePO', label: 'Issue Supplier Purchase Orders (Procurement)' },
+                  { key: 'canManageRoster', label: 'Manage Staff Clearances, Hires & Offboarding' },
                   { key: 'canApproveLeave', label: 'Approve Departmental Holiday Requests' },
                   { key: 'canAuditActivity', label: 'Inspect Subordinate CTI Call Logs' },
                   { key: 'canReallocateAccounts', label: 'Reallocate Deals on Dormancy' },
