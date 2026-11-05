@@ -160,7 +160,7 @@ export default function FinanceDesk({
   const [payMethod, setPayMethod] = useState<'Bank Transfer' | 'Corporate Card'>('Bank Transfer');
   const [cardDetails, setCardDetails] = useState({
     cardLast4: '4192',
-    cardHolder: 'Managing Director (Biscuit CRM Operating)',
+    cardHolder: 'Corporate Cardholder (Biscuit CRM Operating)',
     authCode: ''
   });
   const [bankDetails, setBankDetails] = useState({
