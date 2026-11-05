@@ -49,10 +49,19 @@ export interface CustomerOrderSummary {
 
 export default function CustomerServicesDesk({ 
   currentEmployee,
-  onAwardXp 
+  onAwardXp,
+  onCreateTicket
 }: { 
   currentEmployee?: any;
   onAwardXp?: (amount: number, reason: string) => void;
+  onCreateTicket?: (ticket: {
+    customerName: string;
+    company: string;
+    accountRef: string;
+    description: string;
+    priority: "Urgent" | "High" | "Normal";
+    type: string;
+  }) => void;
 }) {
   const [activeSubTab, setActiveSubTab] = useState<"calls" | "tickets" | "orders">("calls");
 
@@ -62,6 +71,8 @@ export default function CustomerServicesDesk({
   const [ringTimeSeconds, setRingTimeSeconds] = useState<number>(4);
   const [isCallConnected, setIsCallConnected] = useState<boolean>(false);
   const [callNotes, setCallNotes] = useState<string>("");
+  const [ticketPriority, setTicketPriority] = useState<"Urgent" | "High" | "Normal">("Normal");
+  const [ticketCategory, setTicketCategory] = useState<string>("Complaint");
 
   // Screen Pop Target Account
   const [activeAccount, setActiveAccount] = useState<{
@@ -351,17 +362,78 @@ export default function CustomerServicesDesk({
                 className="w-full bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
               />
               <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => {
-                    if (callNotes.trim()) {
-                      alert(`Sent confirmation summary to ${activeAccount.email}`);
-                      if (onAwardXp) onAwardXp(15, "Customer Email Summary Dispatched");
-                    }
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition"
-                >
-                  <Mail className="w-3.5 h-3.5 text-sky-400" /> Email Customer Summary (+15 XP)
-                </button>
+                <div className="flex items-center gap-2">
+                  <select 
+                    value={ticketPriority} 
+                    onChange={(e) => setTicketPriority(e.target.value as any)}
+                    className="bg-slate-900 border border-slate-800 text-slate-300 rounded px-2 py-1 text-[11px]"
+                  >
+                    <option value="Normal">Normal Priority</option>
+                    <option value="High">High Priority</option>
+                    <option value="Urgent">Urgent Priority</option>
+                  </select>
+                  <select 
+                    value={ticketCategory} 
+                    onChange={(e) => setTicketCategory(e.target.value)}
+                    className="bg-slate-900 border border-slate-800 text-slate-300 rounded px-2 py-1 text-[11px]"
+                  >
+                    <option value="Complaint">Complaint</option>
+                    <option value="Delivery Delay">Delivery Delay</option>
+                    <option value="Damaged Item">Damaged Item</option>
+                    <option value="Invoice Query">Invoice Query</option>
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (!callNotes.trim()) {
+                        alert("Please enter case notes before creating a ticket.");
+                        return;
+                      }
+                      if (onCreateTicket) {
+                        onCreateTicket({
+                          customerName: activeAccount.name,
+                          company: activeAccount.company,
+                          accountRef: activeAccount.accountRef,
+                          description: callNotes,
+                          priority: ticketPriority,
+                          type: ticketCategory
+                        });
+                      }
+                      const newTkt: ServiceTicket = {
+                        id: `TKT-${Math.floor(100 + Math.random() * 900)}`,
+                        ticketNumber: `TKT-${Math.floor(100 + Math.random() * 900)}`,
+                        customerName: activeAccount.name,
+                        company: activeAccount.company,
+                        accountRef: activeAccount.accountRef,
+                        type: ticketCategory as any,
+                        priority: ticketPriority,
+                        status: "Open",
+                        description: callNotes,
+                        openedAt: "Just now",
+                        assignedTo: currentEmployee?.name || "Managing Director"
+                      };
+                      setTickets([newTkt, ...tickets]);
+                      if (onAwardXp) onAwardXp(30, "Support Case Logged to CS Pipeline (+30 XP)");
+                      alert("Ticket pushed directly to 1. New Tickets on the Customer Services Pipeline!");
+                      setCallNotes("");
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Push to CS Pipeline (+30 XP)
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (callNotes.trim()) {
+                        alert(`Sent confirmation summary to ${activeAccount.email}`);
+                        if (onAwardXp) onAwardXp(15, "Customer Email Summary Dispatched");
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition"
+                  >
+                    <Mail className="w-3.5 h-3.5 text-sky-400" /> Email Summary (+15 XP)
+                  </button>
+                </div>
               </div>
             </div>
           </div>
