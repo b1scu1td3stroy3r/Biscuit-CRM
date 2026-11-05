@@ -234,7 +234,7 @@ export default function ManagementHub({
       {/* KPI Creation Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl p-6 shadow-2xl">
             <h3 className="text-base font-bold text-slate-100 mb-4 flex items-center gap-2">
               <Target className="w-4 h-4 text-amber-400" /> Define {activeHorizon} KPI Target
             </h3>
@@ -252,77 +252,75 @@ export default function ManagementHub({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                      {/* Department & Team Hierarchy Selector */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="text-xs font-semibold text-slate-400 block mb-1">Target Department</label>
-          {isMD ? (
-            <select
-              value={selectedDept}
-              onChange={(e) => setSelectedDept(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
-            >
-              <option value="Sales">Sales & Commercial</option>
-              <option value="Operations">Operations & Dispatch</option>
-              <option value="Procurement">Procurement & Stock</option>
-              <option value="Finance">Finance & Billing</option>
-              <option value="IT">IT & Infrastructure</option>
-              <option value="Customer Service">Customer Services</option>
-            </select>
-          ) : (
-            <input
-              type="text"
-              disabled
-              value={currentProfile?.department || 'General'}
-              className="w-full bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-400"
-            />
-          )}
-        </div>
-
-        <div>
-          <label className="text-xs font-semibold text-slate-400 block mb-1">Team / Squad</label>
-          <select
-            value={targetTeam}
-            onChange={(e) => setTargetTeam(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
-          >
-            <option value="All Teams">All Department Squads</option>
-            <option value="Inbound Squad">Inbound / Triage</option>
-            <option value="Outbound Specialists">Outbound Specialists</option>
-            <option value="Senior Tier">Senior Tier</option>
-          </select>
-        </div>
-      </div>
-
-      <div>
-        <label className="text-xs font-semibold text-slate-400 block mb-1">Assignment Scope</label>
-        <select
-          value={targetScope}
-          onChange={(e) => setTargetScope(e.target.value as any)}
-          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
-        >
-          <option value="team">Whole Department / Team Quota</option>
-          <option value="individual">Individual Staff Member</option>
-        </select>
-      </div>
-
-                {targetScope === 'Individual' && (
-                  <div>
-                    <label className="text-xs font-semibold text-slate-400 block mb-1">Select Member</label>
+              {/* Scope Hierarchy: 3 Balanced Columns */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Department</label>
+                  {isMD ? (
                     <select
-                      value={targetEmployeeId}
-                      onChange={(e) => setTargetEmployeeId(Number(e.target.value))}
+                      value={selectedDept}
+                      onChange={(e) => setSelectedDept(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400"
                     >
-                      <option value="">Select Colleague</option>
-                      {directReports.map(emp => (
-                        <option key={emp.id} value={emp.id}>{emp.name} ({emp.role})</option>
-                      ))}
+                      <option value="Sales">Sales & Commercial</option>
+                      <option value="Operations">Operations & Logistics</option>
+                      <option value="Procurement">Procurement</option>
+                      <option value="Finance">Finance & Billing</option>
+                      <option value="IT">IT Infrastructure</option>
+                      <option value="Customer Service">Customer Service</option>
                     </select>
-                  </div>
-                )}
+                  ) : (
+                    <input
+                      type="text"
+                      disabled
+                      value={currentProfile?.department || 'General'}
+                      className="w-full bg-slate-950/50 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-400"
+                    />
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Team / Squad</label>
+                  <select
+                    value={targetTeam}
+                    onChange={(e) => setTargetTeam(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400"
+                  >
+                    <option value="All Teams">All Squads</option>
+                    <option value="Inbound Squad">Inbound / Triage</option>
+                    <option value="Outbound Specialists">Outbound Specialists</option>
+                    <option value="Senior Tier">Senior Tier</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Assignment Scope</label>
+                  <select
+                    value={targetScope}
+                    onChange={(e) => setTargetScope(e.target.value as any)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400"
+                  >
+                    <option value="Team">Team / Department</option>
+                    <option value="Individual">Direct Report</option>
+                  </select>
+                </div>
               </div>
+
+              {targetScope === 'Individual' && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Select Colleague</label>
+                  <select
+                    value={targetEmployeeId}
+                    onChange={(e) => setTargetEmployeeId(Number(e.target.value))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400"
+                  >
+                    <option value="">Select Colleague</option>
+                    {directReports.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.name} ({emp.role})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="grid grid-cols-3 gap-2">
                 <div className="col-span-2">
