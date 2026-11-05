@@ -86,8 +86,8 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
     label: 'Customer Services & Support',
     icon: Headphones,
     color: 'text-teal-400 border-teal-500/30 bg-teal-500/10',
-    defaultTab: 'customer-services',
-    allowedTabs: ['customer-services', 'kanban', 'table', 'telephony']
+    defaultTab: 'kanban',
+    allowedTabs: ['kanban', 'telephony', 'customer-services', 'table']
   },
   HR: { 
     label: 'People & HR', 
@@ -1285,16 +1285,7 @@ export default function Dashboard() {
             >
               <Building2 className="w-3.5 h-3.5 text-indigo-400" /> Procurement & Vendors
             </button>
-          <button
-            onClick={() => setViewMode('customer-services' as any)}
-            className={`px-4 py-2 text-xs font-semibold rounded-lg flex items-center gap-2 transition ${
-              viewMode === ('customer-services' as any)
-                ? 'bg-amber-500 text-slate-950 font-bold'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Headphones className="w-3.5 h-3.5 text-teal-400" /> CS Support & Telephony
-          </button>
+
             </>
           )}
 
@@ -1307,7 +1298,7 @@ export default function Dashboard() {
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Headphones className="w-3.5 h-3.5 text-teal-400" /> CS Support & Desk
+            <Headphones className="w-3.5 h-3.5 text-teal-400" /> CS Desk & Actions
           </button>
         )}
 
