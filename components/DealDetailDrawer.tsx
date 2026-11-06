@@ -34,6 +34,19 @@ export default function DealDetailDrawer({
 }: DealDetailDrawerProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'notes' | 'milestones'>('overview');
   const [enableCreativeSignoffs, setEnableCreativeSignoffs] = useState<boolean>(false);
+  const [customFieldDefs, setCustomFieldDefs] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function loadCustomFields() {
+      try {
+        const setting = await db.settings.get('biscuit_custom_fields');
+        if (setting && setting.value) setCustomFieldDefs(setting.value);
+      } catch (err) {
+        console.warn('Could not read custom fields:', err);
+      }
+    }
+    loadCustomFields();
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
