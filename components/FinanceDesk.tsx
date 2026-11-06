@@ -161,12 +161,27 @@ export default function FinanceDesk({
       }
     }
     return {
-      vrn: 'GB 948 2910 44',
-      payeRef: '120/BA94821',
-      utr: '9481029481',
+      vrn: '',
+      payeRef: '',
+      utr: '',
       accountingScheme: 'Standard Accrual' as 'Standard Accrual' | 'Cash Accounting',
     };
   });
+
+    const handlePurgeMockFinanceData = () => {
+    if (confirm('Purge all cached sample transactions and reset business tax settings to clean defaults?')) {
+      localStorage.removeItem('biscuit_crm_financial_transactions');
+      localStorage.removeItem('biscuit_crm_hmrc_settings');
+      setTransactions([]);
+      setHmrcSettings({
+        vrn: '',
+        payeRef: '',
+        utr: '',
+        accountingScheme: 'Standard Accrual'
+      });
+      window.location.reload();
+    }
+  };
 
   const handleSaveHmrcSettings = (updates: Partial<typeof hmrcSettings>) => {
     const next = { ...hmrcSettings, ...updates };
@@ -1744,7 +1759,14 @@ export default function FinanceDesk({
                     onClick={() => handleExportMtdReturn(boxValues)}
                     className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow transition"
                   >
-                    <Download className="w-3.5 h-3.5" /> Export MTD 9-Box Return (CSV)
+                    <button
+                    onClick={handlePurgeMockFinanceData}
+                    className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-slate-300 hover:text-rose-200 border border-slate-700 hover:border-rose-700 text-xs font-bold inline-flex items-center gap-1.5 transition"
+                    title="Purge cached demo transactions and reset to 100% BYOD state"
+                  >
+                    Reset Demo Ledger
+                  </button>
+                  <Download className="w-3.5 h-3.5" /> Export MTD 9-Box Return (CSV)
                   </button>
                 </div>
               </div>
