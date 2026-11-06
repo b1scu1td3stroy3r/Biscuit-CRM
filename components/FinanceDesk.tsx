@@ -168,20 +168,13 @@ export default function FinanceDesk({
     };
   });
 
-    const handlePurgeMockFinanceData = () => {
-    if (confirm('Purge all cached sample transactions and reset business tax settings to clean defaults?')) {
-      localStorage.removeItem('biscuit_crm_financial_transactions');
-      localStorage.removeItem('biscuit_crm_hmrc_settings');
-      setTransactions([]);
-      setHmrcSettings({
-        vrn: '',
-        payeRef: '',
-        utr: '',
-        accountingScheme: 'Standard Accrual'
-      });
-      window.location.reload();
-    }
-  };
+          const userRoleStr = typeof currentUser === 'string' 
+    ? currentUser 
+    : (currentUser as any)?.role || (currentUser as any)?.name || '';
+
+  const canEditTax = userRoleStr === 'Managing Director' || 
+    userRoleStr.toLowerCase().includes('finance') || 
+    (typeof currentUser === 'object' && (currentUser as any)?.department === 'Finance');
 
   const handleSaveHmrcSettings = (updates: Partial<typeof hmrcSettings>) => {
     const next = { ...hmrcSettings, ...updates };
@@ -1759,14 +1752,7 @@ export default function FinanceDesk({
                     onClick={() => handleExportMtdReturn(boxValues)}
                     className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow transition"
                   >
-                    <button
-                    onClick={handlePurgeMockFinanceData}
-                    className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-slate-300 hover:text-rose-200 border border-slate-700 hover:border-rose-700 text-xs font-bold inline-flex items-center gap-1.5 transition"
-                    title="Purge cached demo transactions and reset to 100% BYOD state"
-                  >
-                    Reset Demo Ledger
-                  </button>
-                  <Download className="w-3.5 h-3.5" /> Export MTD 9-Box Return (CSV)
+                    <Download className="w-3.5 h-3.5" /> Export MTD 9-Box Return (CSV)
                   </button>
                 </div>
               </div>
@@ -1778,7 +1764,7 @@ export default function FinanceDesk({
                     type="text"
                     value={hmrcSettings.vrn}
                     onChange={(e) => handleSaveHmrcSettings({ vrn: e.target.value })}
-                    className="mt-1 bg-transparent text-xs font-mono font-bold text-white w-full focus:outline-none"
+                    disabled={!canEditTax} className={`mt-1 bg-transparent text-xs font-mono font-bold text-white w-full focus:outline-none ${!canEditTax ? "cursor-not-allowed opacity-60" : ""}`}
                   />
                 </div>
                 <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
@@ -1787,7 +1773,7 @@ export default function FinanceDesk({
                     type="text"
                     value={hmrcSettings.payeRef}
                     onChange={(e) => handleSaveHmrcSettings({ payeRef: e.target.value })}
-                    className="mt-1 bg-transparent text-xs font-mono font-bold text-white w-full focus:outline-none"
+                    disabled={!canEditTax} className={`mt-1 bg-transparent text-xs font-mono font-bold text-white w-full focus:outline-none ${!canEditTax ? "cursor-not-allowed opacity-60" : ""}`}
                   />
                 </div>
                 <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
@@ -1796,7 +1782,7 @@ export default function FinanceDesk({
                     type="text"
                     value={hmrcSettings.utr}
                     onChange={(e) => handleSaveHmrcSettings({ utr: e.target.value })}
-                    className="mt-1 bg-transparent text-xs font-mono font-bold text-white w-full focus:outline-none"
+                    disabled={!canEditTax} className={`mt-1 bg-transparent text-xs font-mono font-bold text-white w-full focus:outline-none ${!canEditTax ? "cursor-not-allowed opacity-60" : ""}`}
                   />
                 </div>
                 <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">

@@ -1466,6 +1466,7 @@ export default function Dashboard() {
 
       {/* Item 45: Cross-Department Live Stock HUD Modal */}
       <LiveStockHUDModal
+        currentUser={currentProfile}
         isOpen={isStockHUDOpen}
         onClose={() => setIsStockHUDOpen(false)}
       />
@@ -1605,7 +1606,13 @@ export default function Dashboard() {
             const isFirstCol = idx === 0;
             const isLastCol = idx === PIPELINE_STAGES.length - 1;
 
-            return (
+              const isManagerOrAbove = Boolean(
+    currentProfile?.role?.toLowerCase().includes('leader') ||
+    currentProfile?.role?.toLowerCase().includes('manager') ||
+    currentProfile?.role?.toLowerCase().includes('director')
+  );
+
+  return (
               <div key={col.key} className="rounded-xl border border-slate-800 bg-slate-900/40 p-2.5 flex flex-col min-h-[500px]">
                 <div className="pb-2.5 border-b border-slate-800/80 mb-2.5">
                   <div className="flex items-center justify-between">
