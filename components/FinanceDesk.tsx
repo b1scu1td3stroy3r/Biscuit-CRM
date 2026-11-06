@@ -20,6 +20,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Building2,
+  HeartHandshake,
   Search,
   Filter,
   Users,
@@ -35,7 +36,7 @@ import {
   FileText,
   X
 } from 'lucide-react';
-import { Contact, EmployeeProfile, db } from '../packages/storage/src/db';
+import { Contact, EmployeeProfile, db, GiftAidClaim, IndustryModulesConfig } from '../packages/storage/src/db';
 
 export type TimeframeFilter = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'last_year';
 export type LedgerFilter = 'all' | 'incomings' | 'outgoings';
@@ -80,7 +81,18 @@ export default function FinanceDesk({
   employees = []
 }: FinanceDeskProps) {
   // Navigation & View Filters
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'credit_control' | 'payments' | 'payables' | 'payroll' | 'ledger' | 'tax_hmrc'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'credit_control' | 'payments' | 'payables' | 'payroll' | 'ledger' | 'tax_hmrc' | 'gift_aid'>('dashboard');
+  const [isGiftAidEnabled, setIsGiftAidEnabled] = useState(false);
+  const [giftAidClaims, setGiftAidClaims] = useState<GiftAidClaim[]>([]);
+  const [isNewGiftAidModalOpen, setIsNewGiftAidModalOpen] = useState(false);
+  const [newDonation, setNewDonation] = useState({
+    donorName: 'Dr. Alistair Finch',
+    donorAddress: '14 Orchard Way, Oxford',
+    donorPostcode: 'OX2 6NN',
+    donationAmount: 200,
+    donationDate: new Date().toISOString().slice(0, 10),
+    declarationConfirmed: true
+  });
   const [timeframe, setTimeframe] = useState<TimeframeFilter>('month');
   const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -839,7 +851,8 @@ export default function FinanceDesk({
             { id: 'payables', label: 'Received Invoices & Payables', icon: ArrowUpRight },
             { id: 'payroll', label: 'Staff Payroll & Outgoings', icon: Users },
             { id: 'ledger', label: 'Granular Audit Ledger', icon: FileSpreadsheet },
-            { id: 'tax_hmrc', label: 'Tax & HMRC (MTD)', icon: Building2 }
+            { id: 'tax_hmrc', label: 'Tax & HMRC (MTD)', icon: Building2 },
+            ...(isGiftAidEnabled ? [{ id: 'gift_aid', label: 'Gift Aid (HMRC 25%)', icon: HeartHandshake }] : [])
           ].map(tab => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -1848,6 +1861,292 @@ export default function FinanceDesk({
                 </div>
               </div>
             </div>
+          </div>
+        );
+      })()}
+
+      {/* VIEW 7: CHARITY & NON-PROFIT GIFT AID 25% TAX RECLAIM DESK */}
+      {activeTab === 'gift_aid' && isGiftAidEnabled && (() => {
+        const totalDonations = giftAidClaims.reduce((acc, c) => acc + (Number(c.donationAmount) || 0), 0);
+        const totalReclaimable = giftAidClaims.reduce((acc, c) => acc + (Number(c.claimAmount) || 0), 0);
+        const pendingClaims = giftAidClaims.filter(c => c.status === 'Pending Submission');
+        const pendingAmount = pendingClaims.reduce((acc, c) => acc + (Number(c.claimAmount) || 0), 0);
+        const settledAmount = giftAidClaims.filter(c => c.status === 'Reclaimed & Settled').reduce((acc, c) => acc + (Number(c.claimAmount) || 0), 0);
+
+        const handleDownloadHMRCSpreadsheet = () => {
+          const headers = ['Donor Name', 'Donor Address', 'Postcode', 'Donation Date', 'Donation Amount (GBP)', 'Gift Aid Reclaim 25% (GBP)', 'Status', 'Declaration Confirmed'];
+          const rows = giftAidClaims.map(c => [
+            `"${c.donorName}"`,
+            `"${c.donorAddress}"`,
+            `"${c.donorPostcode}"`,
+            c.donationDate,
+            c.donationAmount.toFixed(2),
+            c.claimAmount.toFixed(2),
+            c.status,
+            c.declarationConfirmed ? 'YES' : 'NO'
+          ]);
+          const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+          const encodedUri = encodeURI(csvContent);
+          const link = document.createElement('a');
+          link.setAttribute('href', encodedUri);
+          link.setAttribute('download', `HMRC_Gift_Aid_Schedule_${new Date().toISOString().slice(0, 10)}.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        };
+
+        return (
+          <div className="space-y-6">
+            {/* Header & KPI Summary */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800">
+                <span className="text-xs text-slate-400 font-medium">Total Qualifying Gifts</span>
+                <p className="text-2xl font-black text-white mt-1">£{totalDonations.toFixed(2)}</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">{giftAidClaims.length} verified donor gifts</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-emerald-950/20 border border-emerald-500/30">
+                <span className="text-xs text-emerald-400 font-medium">Total 25% HMRC Reclaim</span>
+                <p className="text-2xl font-black text-emerald-300 mt-1">£{totalReclaimable.toFixed(2)}</p>
+                <p className="text-[11px] text-emerald-500/80 mt-0.5">+25p per £1 on eligible donations</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-amber-950/20 border border-amber-500/30">
+                <span className="text-xs text-amber-400 font-medium">Pending HMRC Submission</span>
+                <p className="text-2xl font-black text-amber-300 mt-1">£{pendingAmount.toFixed(2)}</p>
+                <p className="text-[11px] text-amber-500/80 mt-0.5">{pendingClaims.length} ready for batch claim</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-indigo-950/20 border border-indigo-500/30">
+                <span className="text-xs text-indigo-400 font-medium">Reclaimed & Banked</span>
+                <p className="text-2xl font-black text-indigo-300 mt-1">£{settledAmount.toFixed(2)}</p>
+                <p className="text-[11px] text-indigo-500/80 mt-0.5">Cleared funds received from HMRC</p>
+              </div>
+            </div>
+
+            {/* Actions Bar */}
+            <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h4 className="font-bold text-slate-100 text-sm flex items-center gap-2">
+                  <HeartHandshake className="w-4 h-4 text-rose-400" /> HMRC Charities Online Reclaim Schedule
+                </h4>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Statutory Gift Aid register compliant with UK Charities Act & HMRC declaration rules.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleDownloadHMRCSpreadsheet}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-2 transition"
+                >
+                  <Download className="w-3.5 h-3.5" /> Export HMRC Schedule (CSV)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsNewGiftAidModalOpen(true)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 flex items-center gap-2 transition shadow"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Log Donor Gift
+                </button>
+              </div>
+            </div>
+
+            {/* Claims Table */}
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 uppercase font-mono text-[10px]">
+                    <th className="py-3 px-4">Donor Name & Address</th>
+                    <th className="py-3 px-4">Postcode</th>
+                    <th className="py-3 px-4">Donation Date</th>
+                    <th className="py-3 px-4 text-right">Donation Value</th>
+                    <th className="py-3 px-4 text-right">25% HMRC Reclaim</th>
+                    <th className="py-3 px-4">Batch Reference</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-mono">
+                  {giftAidClaims.map(claim => (
+                    <tr key={claim.id || claim.donorName} className="hover:bg-slate-800/30 transition">
+                      <td className="py-3.5 px-4 font-sans">
+                        <span className="font-bold text-slate-200 block">{claim.donorName}</span>
+                        <span className="text-[11px] text-slate-500">{claim.donorAddress}</span>
+                      </td>
+                      <td className="py-3.5 px-4 text-slate-300 uppercase">{claim.donorPostcode}</td>
+                      <td className="py-3.5 px-4 text-slate-400">{claim.donationDate}</td>
+                      <td className="py-3.5 px-4 text-right font-bold text-white">£{claim.donationAmount.toFixed(2)}</td>
+                      <td className="py-3.5 px-4 text-right font-bold text-emerald-400">+£{claim.claimAmount.toFixed(2)}</td>
+                      <td className="py-3.5 px-4 text-slate-400 text-[11px]">{claim.hmrcBatchReference || 'UNBATCHED'}</td>
+                      <td className="py-3.5 px-4 font-sans">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
+                          claim.status === 'Reclaimed & Settled'
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                            : claim.status === 'Submitted to HMRC'
+                            ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30'
+                            : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                        }`}>
+                          {claim.status}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-sans">
+                        {claim.status === 'Pending Submission' && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const batchRef = `HMRC-GA-${new Date().getFullYear()}-B0${Math.floor(Math.random() * 80 + 10)}`;
+                              await db.giftAidClaims.update(claim.id!, {
+                                status: 'Submitted to HMRC',
+                                hmrcBatchReference: batchRef
+                              });
+                              const updated = await db.giftAidClaims.toArray();
+                              setGiftAidClaims(updated);
+                            }}
+                            className="text-[11px] text-amber-400 hover:text-amber-300 font-medium hover:underline"
+                          >
+                            Mark Submitted
+                          </button>
+                        )}
+                        {claim.status === 'Submitted to HMRC' && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await db.giftAidClaims.update(claim.id!, {
+                                status: 'Reclaimed & Settled'
+                              });
+                              const updated = await db.giftAidClaims.toArray();
+                              setGiftAidClaims(updated);
+                            }}
+                            className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium hover:underline"
+                          >
+                            Mark Settled
+                          </button>
+                        )}
+                        {claim.status === 'Reclaimed & Settled' && (
+                          <span className="text-[11px] text-slate-500">Completed</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Modal: Log New Donor Gift */}
+            {isNewGiftAidModalOpen && (
+              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                    <h4 className="font-bold text-white text-sm flex items-center gap-2">
+                      <HeartHandshake className="w-4 h-4 text-rose-400" /> Log Donor Gift & Gift Aid Declaration
+                    </h4>
+                    <button onClick={() => setIsNewGiftAidModalOpen(false)} className="text-slate-400 hover:text-white p-1">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Donor Full Name</label>
+                      <input
+                        type="text"
+                        value={newDonation.donorName}
+                        onChange={(e) => setNewDonation({ ...newDonation, donorName: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Donor House Address</label>
+                      <input
+                        type="text"
+                        value={newDonation.donorAddress}
+                        onChange={(e) => setNewDonation({ ...newDonation, donorAddress: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-slate-400 block mb-1">UK Postcode</label>
+                        <input
+                          type="text"
+                          value={newDonation.donorPostcode}
+                          onChange={(e) => setNewDonation({ ...newDonation, donorPostcode: e.target.value })}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100 uppercase font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-400 block mb-1">Gift Amount (£)</label>
+                        <input
+                          type="number"
+                          value={newDonation.donationAmount}
+                          onChange={(e) => setNewDonation({ ...newDonation, donationAmount: Number(e.target.value) || 0 })}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100 font-mono font-bold"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Donation Date</label>
+                      <input
+                        type="date"
+                        value={newDonation.donationDate}
+                        onChange={(e) => setNewDonation({ ...newDonation, donationDate: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100"
+                      />
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400">Reclaimable Tax (25%):</span>
+                        <span className="font-mono font-bold text-emerald-400">+£{(newDonation.donationAmount * 0.25).toFixed(2)}</span>
+                      </div>
+                      <label className="flex items-start gap-2 text-[11px] text-slate-300 cursor-pointer pt-1 border-t border-slate-800">
+                        <input
+                          type="checkbox"
+                          checked={newDonation.declarationConfirmed}
+                          onChange={(e) => setNewDonation({ ...newDonation, declarationConfirmed: e.target.checked })}
+                          className="mt-0.5 w-4 h-4 rounded border-slate-700 text-amber-500 focus:ring-amber-500"
+                        />
+                        <span>Donor has confirmed they are a UK taxpayer paying sufficient Income/Capital Gains Tax.</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsNewGiftAidModalOpen(false)}
+                      className="flex-1 py-2 text-xs text-slate-400 border border-slate-800 rounded-lg hover:bg-slate-800"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const claimAmt = newDonation.donationAmount * 0.25;
+                        const claimRecord: Omit<GiftAidClaim, 'id'> = {
+                          donorName: newDonation.donorName,
+                          donorAddress: newDonation.donorAddress,
+                          donorPostcode: newDonation.donorPostcode,
+                          donationAmount: newDonation.donationAmount,
+                          claimAmount: claimAmt,
+                          donationDate: newDonation.donationDate,
+                          declarationConfirmed: newDonation.declarationConfirmed,
+                          status: 'Pending Submission',
+                          createdAt: new Date().toISOString()
+                        };
+                        await db.giftAidClaims.add(claimRecord as any);
+                        const updated = await db.giftAidClaims.toArray();
+                        setGiftAidClaims(updated);
+                        setIsNewGiftAidModalOpen(false);
+                      }}
+                      className="flex-1 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg transition shadow"
+                    >
+                      Save Donor Gift
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}
