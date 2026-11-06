@@ -1,4 +1,5 @@
 "use client";
+import { Contact, db } from "../packages/storage/src/db";
 
 import React, { useState, useEffect } from "react";
 import {
@@ -48,12 +49,16 @@ export interface CustomerOrderSummary {
   total: number;
 }
 
-export default function CustomerServicesDesk({ 
+export default function CustomerServicesDesk({
   currentEmployee,
+  contacts = [],
+  onOpenContact,
   onAwardXp,
   onCreateTicket
-}: { 
+}: {
   currentEmployee?: any;
+  contacts?: Contact[];
+  onOpenContact?: (contact: Contact) => void;
   onAwardXp?: (amount: number, reason: string) => void;
   onCreateTicket?: (ticket: {
     customerName: string;
@@ -65,6 +70,24 @@ export default function CustomerServicesDesk({
   }) => void;
 }) {
   const [activeSubTab, setActiveSubTab] = useState<"calls" | "tickets" | "orders">("calls");
+
+  // Inbound Caller Matcher
+  const [callerPhoneInput, setCallerPhoneInput] = useState<string>("+44 20 7946 0192");
+  const matchedContact = React.useMemo(() => {
+    const cleanInput = callerPhoneInput.replace(/[^0-9]/g, "");
+    if (!cleanInput) return null;
+    return contacts.find(c => {
+      const cPhone = (c.phone || "").replace(/[^0-9]/g, "");
+      return cPhone && (cPhone.includes(cleanInput) || cleanInput.includes(cPhone));
+    }) || null;
+  }, [callerPhoneInput, contacts]);
+
+  const handleScreenPopDrawer = () => {
+    if (matchedContact && onOpenContact) {
+      onOpenContact(matchedContact);
+    }
+  };
+
   // Live Stock Modal for CS & Sales
   const [showStockModal, setShowStockModal] = useState(false);
   const [stockSearch, setStockSearch] = useState('');
@@ -192,14 +215,35 @@ export default function CustomerServicesDesk({
     }
   };
 
-  const handleEndCall = () => {
+  const handleEndCall = async () => {
     setIsCallConnected(false);
+    const duration = activeCallTimer;
     setActiveCallTimer(0);
     setIncomingCall(false);
-    if (onAwardXp && callNotes.trim().length > 10) {
-      onAwardXp(20, "Detailed Call Interaction Logged");
+
+    try {
+      await db.callLogs.add({
+        contactId: matchedContact?.id || 0,
+        contactName: matchedContact?.name || activeAccount.name,
+        companyName: matchedContact?.company || activeAccount.company,
+        phoneNumber: callerPhoneInput,
+        callerName: currentEmployee?.name || "Customer Service Agent",
+        direction: "Inbound",
+        durationSeconds: duration,
+        outcome: "Spoke with DM",
+        notes: callNotes.trim() || "Inbound inquiry handled via Customer Services Desk.",
+        timestamp: new Date().toISOString()
+      });
+    } catch (err) {
+      console.warn("Could not save to db.callLogs:", err);
     }
-    alert("Call logged and account history updated.");
+
+    if (onAwardXp && callNotes.trim().length > 10) {
+      onAwardXp(25, "Inbound CTI Call & Screen-Pop Resolved (+25 XP)");
+    } else if (onAwardXp) {
+      onAwardXp(10, "Inbound Call Completed");
+    }
+
     setCallNotes("");
   };
 
@@ -300,12 +344,20 @@ export default function CustomerServicesDesk({
                   <p className="text-sm font-bold text-white">{activeAccount.company}</p>
                   <p className="text-xs text-slate-300">{activeAccount.name}</p>
                 </div>
-                <button
-                  onClick={handleEndCall}
-                  className="w-full py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition"
-                >
-                  <PhoneOff className="w-4 h-4" /> End & Save Log (+20 XP)
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleScreenPopDrawer}
+                    className="flex-1 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition shadow"
+                  >
+                    <Layers className="w-3.5 h-3.5" /> Screen-Pop Account
+                  </button>
+                  <button
+                    onClick={handleEndCall}
+                    className="flex-1 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition"
+                  >
+                    <PhoneOff className="w-3.5 h-3.5" /> End & Log
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/60 text-center py-8">

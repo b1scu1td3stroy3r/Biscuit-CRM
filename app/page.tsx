@@ -1494,6 +1494,22 @@ export default function Dashboard() {
           <ProcurementDesk currentEmployee={currentProfile} />
         </div>
       )}
+
+      {/* Screen: Customer Services Desk */}
+      {viewMode === 'customer-services' && (
+        <div className="mt-4">
+          <CustomerServicesDesk
+            currentEmployee={currentProfile}
+            contacts={contacts}
+            onOpenContact={(contact) => {
+              setSelectedDealForDrawer(contact);
+            }}
+            onAwardXp={(amount, reason) => {
+              awardRepXP(amount, reason);
+            }}
+          />
+        </div>
+      )}
       {viewMode === ('operations' as any) && (
         <div className="mt-4">
           <OperationsDesk 
