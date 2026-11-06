@@ -2334,7 +2334,7 @@ export default function FinanceDesk({
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Apex Packaging Ltd"
+                  placeholder="e.g. Supplier Name Ltd"
                   value={newInvoiceForm.vendorName}
                   onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, vendorName: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-400"

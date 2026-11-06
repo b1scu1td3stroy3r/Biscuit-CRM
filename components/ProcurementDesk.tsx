@@ -145,11 +145,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
         console.warn(e);
       }
     }
-    return [
-      { id: '1', name: 'Apex Packaging Ltd', contact: 'Mark Evans', email: 'orders@apexpkg.co.uk', vatNumber: 'GB 891 2341 02', status: 'Approved', paymentTerms: 'Net 30' },
-      { id: '2', name: 'Global Logistics Hub', contact: 'Logistics Coordinator', email: 'accounts@globallogistics.com', vatNumber: 'GB 102 9982 44', status: 'Approved', paymentTerms: 'Net 14' },
-      { id: '3', name: 'Raw Material Direct', contact: 'Liam Scott', email: 'sales@rawdirect.co.uk', vatNumber: 'GB 443 1120 99', status: 'Pending Review', paymentTerms: 'Pre-payment' },
-    ];
+    return [];
   });
 
   const [pos, setPos] = useState<PurchaseOrder[]>(() => {
@@ -161,10 +157,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
         console.warn(e);
       }
     }
-    return [
-      { id: 'po-1', poNumber: 'PO-2026-001', vendorName: 'Apex Packaging Ltd', item: 'Corrugated Boxes', description: '500x Corrugated Export Boxes', quantity: 500, unitPrice: 2.90, amount: 1450.00, status: 'Approved', createdAt: '2026-11-02', approvedBy: 'Authorized Procurement Officer' },
-      { id: 'po-2', poNumber: 'PO-2026-002', vendorName: 'Global Logistics Hub', item: 'Freight Services', description: 'Pallet Freight Distribution (London Hub)', quantity: 1, unitPrice: 2300.00, amount: 2300.00, status: 'Sent', createdAt: '2026-11-03' },
-    ];
+    return [];
   });
 
   const [quotes, setQuotes] = useState<VendorQuote[]>(() => {
@@ -176,10 +169,7 @@ export default function ProcurementDesk({ currentEmployee }: { currentEmployee?:
         console.warn(e);
       }
     }
-    return [
-      { id: 'q-1', quoteRef: 'Q-8821', vendorName: 'Apex Packaging Ltd', item: 'Reinforced Strapping Bands', quantity: 1000, unitPrice: 1.40, totalAmount: 1400.00, leadTimeDays: 3, validUntil: '2026-11-30', status: 'Received', createdAt: '2026-11-04' },
-      { id: 'q-2', quoteRef: 'Q-8822', vendorName: 'Raw Material Direct', item: 'Heavy Duty Weatherproof Crates', quantity: 200, unitPrice: 14.50, totalAmount: 2900.00, leadTimeDays: 5, validUntil: '2026-12-15', status: 'Received', createdAt: '2026-11-05' },
-    ];
+    return [];
   });
 
   useEffect(() => {
