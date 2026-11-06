@@ -20,7 +20,11 @@ import {
   ShieldAlert, 
   Plus, 
   Send,
-  Zap
+  Zap,
+  Target,
+  Timer,
+  ShieldCheck,
+  DollarSign
 } from "lucide-react";
 
 export interface ServiceTicket {
@@ -72,7 +76,7 @@ export default function CustomerServicesDesk({
   const [activeSubTab, setActiveSubTab] = useState<"calls" | "tickets" | "orders">("calls");
 
   // Inbound Caller Matcher
-  const [callerPhoneInput, setCallerPhoneInput] = useState<string>("+44 20 7946 0192");
+  const [callerPhoneInput, setCallerPhoneInput] = useState<string>("");
   const matchedContact = React.useMemo(() => {
     const cleanInput = callerPhoneInput.replace(/[^0-9]/g, "");
     if (!cleanInput) return null;
@@ -112,80 +116,74 @@ export default function CustomerServicesDesk({
   const [ticketPriority, setTicketPriority] = useState<"Urgent" | "High" | "Normal">("Normal");
   const [ticketCategory, setTicketCategory] = useState<string>("Complaint");
 
-  // Screen Pop Target Account
-  const [activeAccount, setActiveAccount] = useState<{
-    name: string;
-    company: string;
-    accountRef: string;
-    phone: string;
-    email: string;
-    tier: string;
-    slaHoursRemaining: number;
+  // KPI SLA Target Tracking
+  const [csKpis, setCsKpis] = useState<{
+    maxAnswerSec: number;
+    maxTicketMins: number;
+    maxRefundCap: number;
   }>({
-    name: "Alice Smith",
-    company: "Acme Technologies",
-    accountRef: "ACC-10001",
-    phone: "+44 20 7946 0192",
-    email: "alice@company.co.uk",
-    tier: "Enterprise Key Account",
-    slaHoursRemaining: 3.5
+    maxAnswerSec: 8,
+    maxTicketMins: 60,
+    maxRefundCap: 500
   });
 
-  // Service Tickets
-  const [tickets, setTickets] = useState<ServiceTicket[]>([
-    {
-      id: "TKT-101",
-      ticketNumber: "TKT-101",
-      customerName: "Alice Smith",
-      company: "Acme Technologies",
-      accountRef: "ACC-10001",
-      type: "Delivery Delay",
-      priority: "Urgent",
-      status: "Open",
-      description: "Shipment scheduled for 10:00 AM delivery not yet arrived at Leeds depot.",
-      openedAt: "Today, 14:15",
-      assignedTo: "Customer Support Lead"
-    },
-    {
-      id: "TKT-102",
-      ticketNumber: "TKT-102",
-      customerName: "Client Account Contact",
-      company: "Starlight Media",
-      accountRef: "ACC-10002",
-      type: "Complaint",
-      priority: "High",
-      status: "In Investigation",
-      description: "Damaged packing seals on batch pallet PLT-EUR-WOOD.",
-      openedAt: "Today, 11:30",
-      assignedTo: "Customer Support Lead"
-    }
-  ]);
+  useEffect(() => {
+    async function loadCsKpiTargets() {
+      try {
+        const kpis = await db.teamKpis.toArray();
+        const csTargets = kpis.filter(k => k.department === 'Customer Services');
+        
+        let ansSec = 8;
+        let tktMins = 60;
+        let refCap = 500;
 
-  // Order & Logistics Pipeline Lookups
-  const [orders] = useState<CustomerOrderSummary[]>([
-    {
-      orderId: "ORD-9481",
-      accountRef: "ACC-10001",
-      customerName: "Acme Technologies",
-      stage: "Logistics (Dispatched)",
-      carrier: "DPD Express Freight",
-      trackingNumber: "DPD-UK-8849102",
-      estimatedDelivery: "Today by 17:30",
-      items: "500x Export Cartons, 2x Pallets",
-      total: 1450.00
-    },
-    {
-      orderId: "ORD-9482",
-      accountRef: "ACC-10002",
-      customerName: "Starlight Media",
-      stage: "Active Sales",
-      carrier: "Royal Mail Tracked 24",
-      trackingNumber: "Pending Dispatch SLA",
-      estimatedDelivery: "Tomorrow Morning",
-      items: "50x Heavy Duty Crates",
-      total: 420.00
+        csTargets.forEach(k => {
+          if (k.metric === 'max_phone_answer_time_sec') ansSec = k.targetValue;
+          if (k.metric === 'max_ticket_response_time_min') tktMins = k.targetValue;
+          if (k.metric === 'max_refunds_requested') refCap = k.targetValue;
+        });
+
+        setCsKpis({ maxAnswerSec: ansSec, maxTicketMins: tktMins, maxRefundCap: refCap });
+      } catch (err) {
+        console.warn('Unable to load CS KPI targets:', err);
+      }
     }
-  ]);
+    loadCsKpiTargets();
+  }, []);
+
+  // Screen Pop Target Account derived dynamically from caller match or first available contact
+  const selectedContact = matchedContact || (contacts && contacts.length > 0 ? contacts[0] : null);
+
+  const activeAccount = {
+    name: selectedContact ? (selectedContact.contactName || selectedContact.companyName || "Primary Contact") : "No Customer Connected",
+    company: selectedContact ? (selectedContact.companyName || "Independent Account") : "Awaiting Call",
+    accountRef: selectedContact ? (selectedContact.accountNumber || `ACC-${selectedContact.id || "0000"}`) : "ACC-NONE",
+    phone: selectedContact ? (selectedContact.phone || "No direct dial") : "—",
+    email: selectedContact ? (selectedContact.email || "No email registered") : "—",
+    tier: selectedContact?.value && selectedContact.value > 5000 ? "Enterprise Key Account" : "Standard Account",
+    slaHoursRemaining: 4.0
+  };
+
+  // Dynamic Service Tickets
+  const [tickets, setTickets] = useState<ServiceTicket[]>([]);
+
+  // Dynamically map real client accounts to orders
+  const orders: CustomerOrderSummary[] = React.useMemo(() => {
+    return (contacts || [])
+      .filter(c => (c.value && c.value > 0) || c.stage === 'Logistics' || c.stage === 'Sales')
+      .slice(0, 10)
+      .map((c, idx) => ({
+        orderId: `ORD-${c.id ? 1000 + c.id : 9000 + idx}`,
+        accountRef: c.accountNumber || `ACC-${c.id || 1000 + idx}`,
+        customerName: c.companyName || c.contactName || `Client Account #${idx + 1}`,
+        stage: c.stage === 'Logistics' ? "Logistics (Dispatched)" : "Active Sales",
+        carrier: "Royal Mail Tracked 24",
+        trackingNumber: `GB-${c.accountNumber || 'GB9082'}`,
+        estimatedDelivery: "Next Working Day",
+        items: `${c.dealTitle || 'Commercial Order Items'}`,
+        total: c.value || 0
+      }));
+  }, [contacts]);
 
   // Ring timer simulation
   useEffect(() => {
@@ -268,6 +266,51 @@ export default function CustomerServicesDesk({
               <p className="text-xs text-slate-400 mt-0.5">
                 Inbound call screen-pops, SLA ticket resolution, order logistics tracking & account logging.
               </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Customer Services Target & SLA Performance Ribbon */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-teal-500/20 text-teal-400 flex items-center justify-center font-bold">
+              <Timer className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-[10px] uppercase font-bold text-slate-400">Answer Speed SLA</div>
+              <div className="font-mono font-bold text-white flex items-center gap-1.5">
+                Target: &le; {csKpis.maxAnswerSec}s
+                <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${ringTimeSeconds <= csKpis.maxAnswerSec ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                  {ringTimeSeconds <= csKpis.maxAnswerSec ? 'Compliant' : 'Breached'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold">
+              <Target className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-[10px] uppercase font-bold text-slate-400">Ticket Turnaround SLA</div>
+              <div className="font-mono font-bold text-white flex items-center gap-1.5">
+                Target: &le; {csKpis.maxTicketMins}m
+                <span className="text-[10px] px-1.5 py-0.2 rounded font-semibold bg-indigo-500/20 text-indigo-300">
+                  {tickets.filter(t => t.status !== 'Resolved').length} Open
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-[10px] uppercase font-bold text-slate-400">Monthly Refund Cap</div>
+              <div className="font-mono font-bold text-amber-400">
+                Allowance: £{csKpis.maxRefundCap.toLocaleString()}
+              </div>
             </div>
           </div>
         </div>
@@ -519,13 +562,13 @@ export default function CustomerServicesDesk({
                 const newTkt: ServiceTicket = {
                   id: `TKT-${Math.floor(100 + Math.random() * 900)}`,
                   ticketNumber: `TKT-${Math.floor(100 + Math.random() * 900)}`,
-                  customerName: "Alice Smith",
-                  company: "Acme Technologies",
-                  accountRef: "ACC-10001",
+                  customerName: selectedContact ? (selectedContact.contactName || selectedContact.companyName || "Valued Customer") : "Inbound Client",
+                  company: selectedContact ? (selectedContact.companyName || "Direct Account") : "General Enquiries",
+                  accountRef: selectedContact ? (selectedContact.accountNumber || `ACC-${selectedContact.id || "000"}`) : "ACC-GEN",
                   type: "General",
                   priority: "Normal",
                   status: "Open",
-                  description: "Customer requested expedited tracking update on dispatched freight.",
+                  description: "Customer requested status review on account queries and service levels.",
                   openedAt: "Just now",
                   assignedTo: currentEmployee?.name || "Customer Support Lead"
                 };

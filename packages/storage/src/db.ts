@@ -40,6 +40,14 @@ export interface EmployeeProfile {
   matrixManagerIds?: number[];       // Matrix dotted-line managers
   assignedProjectIds?: string[];     // Matrix project allocations
   customPrivileges?: CustomPrivileges;
+
+  // HR Company Directory & Professional Profiles
+  phoneExtension?: string;
+  companyPhone?: string;
+  linkedInUrl?: string;
+  duolingoProfile?: string;
+  openLearnProfile?: string;
+  credlyProfile?: string;
 }
 
 export interface WhiteboardNote {
@@ -126,7 +134,19 @@ export interface InternalTicket {
 }
 
 export type KPIHorizon = 'Daily' | 'Weekly' | 'Monthly';
-export type KPIMetric = 'deals_closed' | 'revenue_booked' | 'calls_logged' | 'tickets_resolved' | 'slas_met' | 'custom';
+export type KPIMetric = 
+  | 'deals_closed' 
+  | 'revenue_booked' 
+  | 'calls_logged' 
+  | 'outbound_dials'
+  | 'avg_outbound_call_duration'
+  | 'decision_makers_spoken'
+  | 'max_phone_answer_time_sec'
+  | 'max_ticket_response_time_min'
+  | 'max_refunds_requested'
+  | 'tickets_resolved' 
+  | 'slas_met' 
+  | 'custom';
 
 export interface TeamKPI {
   id?: number;
@@ -154,7 +174,17 @@ export interface CompanySetting {
   updatedAt: string;
 }
 
-export type IndustryVertical = 'general' | 'design_agency' | 'pharma_healthcare' | 'financial_services' | 'education_provider' | 'charity_nonprofit';
+export type IndustryVertical = 
+  | 'general' 
+  | 'design_agency' 
+  | 'pharma_healthcare' 
+  | 'financial_services' 
+  | 'education_provider' 
+  | 'charity_nonprofit'
+  | 'construction'
+  | 'insurance'
+  | 'veterinary'
+  | 'museums_sports';
 
 export interface IndustryModulesConfig {
   industry: IndustryVertical;
@@ -163,6 +193,11 @@ export interface IndustryModulesConfig {
   enableOfqualCompliance: boolean;
   enableCreativeSignoffs: boolean;
   enableGiftAid: boolean;
+  // Focus Group additions
+  enableCisTax?: boolean;                    // Construction Industry Scheme tax deduction rules
+  enableInsuranceSchedules?: boolean;        // Insurance policy terms, underwriting & renewal schedules
+  enableVeterinaryRecords?: boolean;         // Veterinary pet / patient records (breed, microchip, vaccinations)
+  enableSportsMuseumMemberships?: boolean;   // Museums & Sports season passes, memberships & gift-aid admission
   updatedAt: string;
   configuredBy?: string;
 }

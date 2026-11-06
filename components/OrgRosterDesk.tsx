@@ -352,6 +352,97 @@ export default function OrgRosterDesk({ currentRepName, userRole, contacts, onDa
                   );
                 })}
               </div>
+
+              {/* HR Company Directory & Professional Credentials (Item 44) */}
+              <div className="mt-5 pt-4 border-t border-slate-800 space-y-3">
+                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-amber-400" /> Directory & Credential Badges
+                </h4>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-400 block mb-1">Phone Extension</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. x402"
+                      value={selectedEmployee.phoneExtension || ''}
+                      onChange={(e) => handleUpdateEmployee({
+                        ...selectedEmployee,
+                        phoneExtension: e.target.value,
+                      })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-400 block mb-1">Direct Dial (DDI)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. +44 20 7946 0912"
+                      value={selectedEmployee.companyPhone || ''}
+                      onChange={(e) => handleUpdateEmployee({
+                        ...selectedEmployee,
+                        companyPhone: e.target.value,
+                      })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-400 block mb-1">LinkedIn Profile URL</label>
+                    <input
+                      type="url"
+                      placeholder="https://linkedin.com/in/..."
+                      value={selectedEmployee.linkedInUrl || ''}
+                      onChange={(e) => handleUpdateEmployee({
+                        ...selectedEmployee,
+                        linkedInUrl: e.target.value,
+                      })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-400 block mb-1">Duolingo Profile / Username</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. alex_lingo"
+                      value={selectedEmployee.duolingoProfile || ''}
+                      onChange={(e) => handleUpdateEmployee({
+                        ...selectedEmployee,
+                        duolingoProfile: e.target.value,
+                      })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-400 block mb-1">OpenLearn Profile / Transcripts URL</label>
+                    <input
+                      type="url"
+                      placeholder="https://www.open.edu/openlearn/..."
+                      value={selectedEmployee.openLearnProfile || ''}
+                      onChange={(e) => handleUpdateEmployee({
+                        ...selectedEmployee,
+                        openLearnProfile: e.target.value,
+                      })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-400 block mb-1">Credly Digital Badges URL</label>
+                    <input
+                      type="url"
+                      placeholder="https://www.credly.com/users/..."
+                      value={selectedEmployee.credlyProfile || ''}
+                      onChange={(e) => handleUpdateEmployee({
+                        ...selectedEmployee,
+                        credlyProfile: e.target.value,
+                      })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           ) : (
             <div className="text-center py-12 text-slate-500 text-xs">

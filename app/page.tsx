@@ -9,6 +9,8 @@ import OnboardingWizard from '../components/OnboardingWizard';
 import { scheduleBiscuitSync } from '../packages/storage/src/biscuitSync';
 import '../lib/cloudGuard';
 
+import { SalesPacingHUD } from '../components/SalesPacingHUD';
+import LiveStockHUDModal from '../components/LiveStockHUDModal';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Package, 
   ShieldCheck, Zap, Database, Building2, Headphones, Calendar as CalendarIcon, 
@@ -317,6 +319,7 @@ export default function Dashboard() {
 
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isHealthOpen, setIsHealthOpen] = useState(false);
+  const [isStockHUDOpen, setIsStockHUDOpen] = useState(false);
   const [selectedDealForDrawer, setSelectedDealForDrawer] = useState<Contact | null>(null);
 
   const [senderName, setSenderName] = useState<string>('Managing Director');
@@ -1437,6 +1440,15 @@ export default function Dashboard() {
           </button>
         )}
 
+        {/* Cross-Department Live Stock HUD (Item 45) */}
+        <button
+          onClick={() => setIsStockHUDOpen(true)}
+          className="px-3 py-2 text-xs font-semibold rounded-lg flex items-center gap-1.5 bg-emerald-950/60 border border-emerald-700/60 text-emerald-300 hover:bg-emerald-900/60 hover:text-emerald-200 transition"
+          title="Open live stock and reserved inventory lookup"
+        >
+          <Package className="w-3.5 h-3.5 text-emerald-400" /> Live Stock HUD
+        </button>
+
         {(isMD || isIT) && (
           <button
             onClick={() => setViewMode('import')}
@@ -1446,6 +1458,12 @@ export default function Dashboard() {
           </button>
         )}
       </div>
+
+      {/* Item 45: Cross-Department Live Stock HUD Modal */}
+      <LiveStockHUDModal
+        isOpen={isStockHUDOpen}
+        onClose={() => setIsStockHUDOpen(false)}
+      />
 
       {/* Screen: Data Import & Onboarding Wizard */}
       {viewMode === 'import' && (isMD || isIT) && (
@@ -1559,7 +1577,13 @@ export default function Dashboard() {
 
       {/* Screen: Pipeline Board */}
       {viewMode === 'kanban' && (isMD || allowedTabs.includes('kanban')) && (
-        <section className="grid grid-cols-1 md:grid-cols-7 gap-3 mb-8">
+        <>
+          <SalesPacingHUD
+            currentUser={senderName}
+            department={department}
+            contacts={contacts}
+          />
+          <section className="grid grid-cols-1 md:grid-cols-7 gap-3 mb-8">
           {currentPipelineStages.map((col, idx) => {
             const colContacts = scopedContacts.filter(c => c.stage === col.key);
             const isFirstCol = idx === 0;
@@ -1696,6 +1720,7 @@ export default function Dashboard() {
             );
           })}
         </section>
+        </>
       )}
 
 

@@ -3,13 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   LifeBuoy, 
-  Trophy, Award, Flame, UserCheck, Calendar, ArrowRightLeft, 
+  Trophy, Award, BookOpen, Phone, Search, Globe, GraduationCap, Flame, UserCheck, Calendar, ArrowRightLeft, 
   StickyNote, Plus, Trash2, CheckCircle2, Clock, ShieldCheck, 
   Sparkles, Check, AlertCircle, Send, CalendarCheck2, Mail, ExternalLink,
   XCircle, Crown, X
 } from 'lucide-react';
 import { db, Contact, StaffHierarchyTier, EmployeeProfile, WhiteboardNote, LeaveRequest, ComplianceCertificate, IndustryModulesConfig } from '../packages/storage/src/db';
-import { syncLeaveToGoogleCalendar, deleteCalendarEvent } from '../packages/storage/src/calendarSync';
+import { syncLeaveToGoogleCalendar, deleteCalendarEvent, syncLeaveToMicrosoftCalendar, deleteMicrosoftCalendarEvent } from '../packages/storage/src/calendarSync';
 
 interface EmployeeHubProps {
   currentRepName: string;
@@ -17,6 +17,7 @@ interface EmployeeHubProps {
   onRepNameChange: (newName: string) => void;
   onAdvanceContactStage?: (contact: Contact) => void;
   onAuthenticateGoogle?: () => Promise<string>;
+  onAuthenticateMicrosoft?: () => Promise<string>;
 }
 
 const NOTE_COLORS = {
@@ -81,8 +82,11 @@ export default function EmployeeHub({
   contacts,
   onRepNameChange,
   onAuthenticateGoogle,
+  onAuthenticateMicrosoft,
 }: EmployeeHubProps) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'handover' | 'whiteboard' | 'leave' | 'approvals' | 'support' | 'compliance'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'handover' | 'whiteboard' | 'leave' | 'approvals' | 'support' | 'compliance' | 'directory'>('profile');
+  const [allEmployees, setAllEmployees] = useState<EmployeeProfile[]>([]);
+  const [directorySearch, setDirectorySearch] = useState('');
   const [isMhraEnabled, setIsMhraEnabled] = useState(false);
   const [certificates, setCertificates] = useState<ComplianceCertificate[]>([]);
   const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
@@ -242,6 +246,7 @@ export default function EmployeeHub({
       setLeaveList(storedLeave.reverse());
 
       const allProfiles = await db.employees.toArray();
+      setAllEmployees(allProfiles);
       const existing = allProfiles.find(p => p.name.toLowerCase() === currentRepName.toLowerCase());
       if (existing) {
         setProfile(existing);
@@ -365,10 +370,26 @@ export default function EmployeeHub({
 
       let calId: string | undefined;
 
-      if (onAuthenticateGoogle) {
+      // Multi-Provider Calendar Sync (Microsoft 365 or Google Workspace)
+      if (onAuthenticateMicrosoft) {
         try {
-          const token = await onAuthenticateGoogle();
-          calId = await syncLeaveToGoogleCalendar(token, {
+          const msToken = await onAuthenticateMicrosoft();
+          calId = await syncLeaveToMicrosoftCalendar(msToken, {
+            employeeName: currentRepName,
+            leaveType: newLeave.type,
+            startDate: newLeave.startDate,
+            endDate: newLeave.endDate,
+            notes: newLeave.notes,
+          });
+        } catch (msErr) {
+          console.warn('Microsoft 365 Calendar sync deferred:', msErr);
+        }
+      }
+
+      if (!calId && onAuthenticateGoogle) {
+        try {
+          const googleToken = await onAuthenticateGoogle();
+          calId = await syncLeaveToGoogleCalendar(googleToken, {
             employeeName: currentRepName,
             leaveType: newLeave.type,
             startDate: newLeave.startDate,
@@ -415,12 +436,22 @@ export default function EmployeeHub({
     setDeletingLeaveId(req.id);
 
     try {
-      if (req.calendarEventId && onAuthenticateGoogle) {
-        try {
-          const token = await onAuthenticateGoogle();
-          await deleteCalendarEvent(token, req.calendarEventId);
-        } catch (calErr) {
-          console.warn('Google Calendar event deletion deferred:', calErr);
+      if (req.calendarEventId) {
+        if (onAuthenticateMicrosoft) {
+          try {
+            const msToken = await onAuthenticateMicrosoft();
+            await deleteMicrosoftCalendarEvent(msToken, req.calendarEventId);
+          } catch (msErr) {
+            console.warn('Microsoft Calendar event deletion deferred:', msErr);
+          }
+        }
+        if (onAuthenticateGoogle) {
+          try {
+            const googleToken = await onAuthenticateGoogle();
+            await deleteCalendarEvent(googleToken, req.calendarEventId);
+          } catch (calErr) {
+            console.warn('Google Calendar event deletion deferred:', calErr);
+          }
         }
       }
 
@@ -592,6 +623,14 @@ export default function EmployeeHub({
           <ArrowRightLeft className="w-4 h-4" /> Deal Handover Desk
         </button>
         <button
+          onClick={() => setActiveTab('directory')}
+          className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition ${
+            activeTab === 'directory' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" /> Company Directory ({allEmployees.length})
+        </button>
+        <button
           onClick={() => setActiveTab('leave')}
           className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition ${
             activeTab === 'leave' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-slate-200'
@@ -630,6 +669,154 @@ export default function EmployeeHub({
           </button>
         )}
       </div>
+
+      {/* Tab: HR Company Directory & Professional Credentials (Item 44) */}
+      {activeTab === 'directory' && (
+        <div className="space-y-4">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-amber-400" /> HR Company Directory & Professional Credentials
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Internal telephone extensions, direct dials, management reporting lines, and verified credential profiles.
+              </p>
+            </div>
+            <div className="relative w-full md:w-72">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search by name, role, dept, ext..."
+                value={directorySearch}
+                onChange={(e) => setDirectorySearch(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {allEmployees
+              .filter((emp) => {
+                if (!directorySearch.trim()) return true;
+                const q = directorySearch.toLowerCase();
+                return (
+                  emp.name.toLowerCase().includes(q) ||
+                  emp.role.toLowerCase().includes(q) ||
+                  emp.department.toLowerCase().includes(q) ||
+                  (emp.phoneExtension && emp.phoneExtension.toLowerCase().includes(q)) ||
+                  (emp.companyPhone && emp.companyPhone.toLowerCase().includes(q))
+                );
+              })
+              .map((emp) => {
+                const manager = allEmployees.find((m) => m.id === emp.primaryManagerId);
+                return (
+                  <div
+                    key={emp.id || emp.name}
+                    className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex flex-col justify-between hover:border-slate-700 transition space-y-3"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-bold text-slate-100 text-sm flex items-center gap-2">
+                            {emp.name}
+                            {emp.name.toLowerCase() === currentRepName.toLowerCase() && (
+                              <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded font-mono font-medium">You</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-400 font-medium mt-0.5">{emp.role}</div>
+                          <div className="text-[11px] text-amber-400/90 font-medium">{emp.department} &bull; Tier: {emp.tier}</div>
+                        </div>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">
+                          Lv.{emp.level || 1}
+                        </span>
+                      </div>
+
+                      {/* Contact & Extension Numbers */}
+                      <div className="mt-3 pt-2.5 border-t border-slate-800/80 space-y-1.5 text-xs text-slate-300">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500 text-[11px] flex items-center gap-1.5">
+                            <Phone className="w-3 h-3 text-slate-400" /> Extension:
+                          </span>
+                          <span className="font-mono font-bold text-amber-400">
+                            {emp.phoneExtension || 'Not assigned'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500 text-[11px]">Direct Line:</span>
+                          {emp.companyPhone ? (
+                            <a href={`tel:${emp.companyPhone}`} className="font-mono text-slate-200 hover:text-amber-400 underline decoration-slate-700">
+                              {emp.companyPhone}
+                            </a>
+                          ) : (
+                            <span className="text-slate-600 font-mono text-[11px]">None registered</span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500 text-[11px]">Line Manager:</span>
+                          <span className="text-slate-200 font-medium">
+                            {manager ? manager.name : 'Managing Director / Top-Level'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* External Credential & Learning Badges */}
+                    <div className="pt-2.5 border-t border-slate-800/80">
+                      <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1.5">
+                        Credentials & Badges
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {emp.linkedInUrl && (
+                          <a
+                            href={emp.linkedInUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-sky-950/60 border border-sky-800/60 text-sky-300 hover:bg-sky-900/60 transition"
+                          >
+                            LinkedIn <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        )}
+                        {emp.duolingoProfile && (
+                          <a
+                            href={`https://www.duolingo.com/profile/${emp.duolingoProfile.replace('@', '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-emerald-950/60 border border-emerald-800/60 text-emerald-300 hover:bg-emerald-900/60 transition"
+                          >
+                            Duolingo ({emp.duolingoProfile}) <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        )}
+                        {emp.openLearnProfile && (
+                          <a
+                            href={emp.openLearnProfile}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-blue-950/60 border border-blue-800/60 text-blue-300 hover:bg-blue-900/60 transition"
+                          >
+                            OpenLearn <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        )}
+                        {emp.credlyProfile && (
+                          <a
+                            href={emp.credlyProfile}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-amber-950/60 border border-amber-800/60 text-amber-300 hover:bg-amber-900/60 transition"
+                          >
+                            Credly Badges <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        )}
+                        {!emp.linkedInUrl && !emp.duolingoProfile && !emp.openLearnProfile && !emp.credlyProfile && (
+                          <span className="text-[11px] text-slate-500 italic">No verified badges linked</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
 
       {/* Tab: Leader Leave Approvals */}
       {activeTab === 'approvals' && isLeader && (
