@@ -33,6 +33,29 @@ export default function DealDetailDrawer({
   onContactUpdated,
 }: DealDetailDrawerProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'notes' | 'milestones'>('overview');
+  const [enableCreativeSignoffs, setEnableCreativeSignoffs] = useState<boolean>(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadIndustrySettings() {
+      try {
+        const setting = await db.settings.get('biscuit_industry_modules');
+        if (setting && setting.value && isMounted) {
+          const isEnabled = Boolean(
+            setting.value.enableCreativeSignoffs || setting.value.industry === 'design_agency'
+          );
+          setEnableCreativeSignoffs(isEnabled);
+          if (!isEnabled && activeTab === 'milestones') {
+            setActiveTab('overview');
+          }
+        }
+      } catch (err) {
+        console.warn('Could not read biscuit_industry_modules:', err);
+      }
+    }
+    loadIndustrySettings();
+    return () => { isMounted = false; };
+  }, [activeTab]);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<Contact>>({});
   const [newNote, setNewNote] = useState('');
@@ -164,16 +187,18 @@ export default function DealDetailDrawer({
               >
                 Notes & Timeline
               </button>
-              <button
-                onClick={() => setActiveTab('milestones')}
-                className={`py-3 text-xs font-semibold border-b-2 flex items-center gap-1.5 transition ${
-                  activeTab === 'milestones'
-                    ? 'border-amber-500 text-amber-400'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <ShieldCheck className="w-3.5 h-3.5" /> Sign-Off & Proofing
-              </button>
+              {enableCreativeSignoffs && (
+                <button
+                  onClick={() => setActiveTab('milestones')}
+                  className={`py-3 text-xs font-semibold border-b-2 flex items-center gap-1.5 transition ${
+                    activeTab === 'milestones'
+                      ? 'border-amber-500 text-amber-400'
+                      : 'border-transparent text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" /> Sign-Off & Proofing
+                </button>
+              )}
             </div>
 
             <div className="p-6 overflow-y-auto max-h-[calc(100vh-220px)] space-y-6">
@@ -390,7 +415,7 @@ export default function DealDetailDrawer({
                 </div>
               )}
 
-              {activeTab === 'milestones' && (
+              {activeTab === 'milestones' && enableCreativeSignoffs && (
                 <div className="space-y-4">
                   <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2.5">
                     <ShieldCheck className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
