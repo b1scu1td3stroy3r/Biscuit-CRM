@@ -154,6 +154,16 @@ export interface CompanySetting {
   updatedAt: string;
 }
 
+export type IndustryVertical = 'general' | 'design_agency' | 'pharma_healthcare' | 'charity_nonprofit';
+
+export interface IndustryModulesConfig {
+  industry: IndustryVertical;
+  enableMhraCompliance: boolean;
+  enableCreativeSignoffs: boolean;
+  enableGiftAid: boolean;
+  updatedAt: string;
+}
+
 export interface Contact {
   id?: number;
   accountNumber: string;
@@ -251,6 +261,35 @@ export interface CallLog {
   timestamp: string;
 }
 
+export interface ComplianceCertificate {
+  id?: number;
+  employeeId: number;
+  employeeName: string;
+  department: string;
+  certificationName: string; // e.g., 'MHRA Good Distribution Practice (GDP)', 'Information Governance & Caldicott'
+  issuingBody: string;       // e.g., 'MHRA', 'CPD Standards Office', 'Internal Compliance'
+  completedDate: string;
+  expiryDate: string;
+  status: 'Active' | 'Expiring Soon' | 'Expired';
+  certificateRef?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface GiftAidClaim {
+  id?: number;
+  donorName: string;
+  donorAddress: string;
+  donorPostcode: string;
+  donationAmount: number;
+  claimAmount: number; // 25% reclaimable
+  donationDate: string;
+  declarationConfirmed: boolean;
+  status: 'Pending Submission' | 'Submitted to HMRC' | 'Reclaimed & Settled';
+  hmrcBatchReference?: string;
+  createdAt: string;
+}
+
 export class BiscuitDB extends Dexie {
   contacts!: Table<Contact, number>;
   projects!: Table<ProjectTask, number>;
@@ -267,6 +306,8 @@ export class BiscuitDB extends Dexie {
   itTickets!: Table<ITTicket, number>;
   internalTickets!: Table<InternalTicket, number>;
   teamKpis!: Table<TeamKPI, number>;
+  complianceCertificates!: Table<ComplianceCertificate, number>;
+  giftAidClaims!: Table<GiftAidClaim, number>;
 
   constructor() {
     super('biscuit_crm_db');
@@ -289,6 +330,11 @@ export class BiscuitDB extends Dexie {
       itTickets: '++id, ticketNumber, category, priority, status, requesterEmail, assignedTechId, createdAt, resolvedAt',
       internalTickets: '++id, ticketNumber, type, category, priority, status, requesterEmail, createdAt',
       teamKpis: '++id, managerId, targetScope, targetEmployeeId, department, horizon, metric, startDate, endDate, createdAt'
+    });
+
+    this.version(6).stores({
+      complianceCertificates: '++id, employeeId, department, certificationName, expiryDate, status, createdAt',
+      giftAidClaims: '++id, donorName, donationDate, status, hmrcBatchReference, createdAt'
     });
   }
 }

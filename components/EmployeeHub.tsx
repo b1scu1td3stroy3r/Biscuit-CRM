@@ -8,7 +8,7 @@ import {
   Sparkles, Check, AlertCircle, Send, CalendarCheck2, Mail, ExternalLink,
   XCircle, Crown, X
 } from 'lucide-react';
-import { db, Contact, StaffHierarchyTier, EmployeeProfile, WhiteboardNote, LeaveRequest } from '../packages/storage/src/db';
+import { db, Contact, StaffHierarchyTier, EmployeeProfile, WhiteboardNote, LeaveRequest, ComplianceCertificate, IndustryModulesConfig } from '../packages/storage/src/db';
 import { syncLeaveToGoogleCalendar, deleteCalendarEvent } from '../packages/storage/src/calendarSync';
 
 interface EmployeeHubProps {
@@ -82,7 +82,18 @@ export default function EmployeeHub({
   onRepNameChange,
   onAuthenticateGoogle,
 }: EmployeeHubProps) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'handover' | 'whiteboard' | 'leave' | 'approvals' | 'support'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'handover' | 'whiteboard' | 'leave' | 'approvals' | 'support' | 'compliance'>('profile');
+  const [isMhraEnabled, setIsMhraEnabled] = useState(false);
+  const [certificates, setCertificates] = useState<ComplianceCertificate[]>([]);
+  const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
+  const [certForm, setCertForm] = useState({
+    certificationName: 'MHRA Good Distribution Practice (GDP)',
+    issuingBody: 'MHRA Standards Directorate',
+    completedDate: new Date().toISOString().slice(0, 10),
+    expiryDate: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().slice(0, 10),
+    certificateRef: 'MHRA-GDP-UK-9041',
+    notes: 'Statutory compliance refresher completed.'
+  });
   const [supportType, setSupportType] = useState<'IT' | 'HR'>('IT');
   const [supportTitle, setSupportTitle] = useState('');
   const [supportDesc, setSupportDesc] = useState('');
@@ -123,6 +134,89 @@ export default function EmployeeHub({
   const [selectedColor, setSelectedColor] = useState<'amber' | 'sky' | 'emerald' | 'purple' | 'rose'>('amber');
 
   const [leaveList, setLeaveList] = useState<LeaveRequest[]>([]);
+
+  // Check if business has activated MHRA & Pharma Regulatory compliance module
+  useEffect(() => {
+    async function checkIndustryModule() {
+      try {
+        const setting = await db.settings.get('biscuit_industry_modules');
+        const config = setting?.value as IndustryModulesConfig | undefined;
+        const enabled = !!(config?.enableMhraCompliance || config?.industry === 'pharma_healthcare');
+        setIsMhraEnabled(enabled);
+
+        if (enabled) {
+          let certs = await db.complianceCertificates.toArray();
+          if (certs.length === 0) {
+            const now = new Date();
+            const oneYear = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+            const expiring = new Date(Date.now() + 20 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+            const initialCerts: Omit<ComplianceCertificate, 'id'>[] = [
+              {
+                employeeId: profile?.id || 1,
+                employeeName: profile?.name || 'Staff Member',
+                department: profile?.department || 'Operations',
+                certificationName: 'MHRA Good Distribution Practice (GDP)',
+                issuingBody: 'MHRA Standards Directorate',
+                completedDate: now.toISOString().slice(0, 10),
+                expiryDate: oneYear,
+                status: 'Active',
+                certificateRef: 'MHRA-GDP-UK-9041',
+                notes: 'Annual cold-chain & distribution audit passed.',
+                createdAt: now.toISOString()
+              },
+              {
+                employeeId: profile?.id || 1,
+                employeeName: profile?.name || 'Staff Member',
+                department: profile?.department || 'Operations',
+                certificationName: 'Good Manufacturing Practice (GMP / Annex 1)',
+                issuingBody: 'MHRA / Royal Pharmaceutical Society',
+                completedDate: now.toISOString().slice(0, 10),
+                expiryDate: expiring,
+                status: 'Expiring Soon',
+                certificateRef: 'GMP-ANNEX1-8820',
+                notes: 'Cleanroom & sterile fill validation renewal pending within 30 days.',
+                createdAt: now.toISOString()
+              },
+              {
+                employeeId: profile?.id || 1,
+                employeeName: profile?.name || 'Staff Member',
+                department: profile?.department || 'Operations',
+                certificationName: 'Pharmacovigilance & Adverse Event Reporting (PV)',
+                issuingBody: 'MHRA Yellow Card Scheme',
+                completedDate: now.toISOString().slice(0, 10),
+                expiryDate: oneYear,
+                status: 'Active',
+                certificateRef: 'MHRA-PV-7731',
+                notes: 'Mandatory clinical trial & post-marketing surveillance protocol.',
+                createdAt: now.toISOString()
+              },
+              {
+                employeeId: profile?.id || 1,
+                employeeName: profile?.name || 'Staff Member',
+                department: profile?.department || 'Operations',
+                certificationName: 'COSHH & Hazardous Substance Handling',
+                issuingBody: 'Health & Safety Executive (HSE)',
+                completedDate: now.toISOString().slice(0, 10),
+                expiryDate: oneYear,
+                status: 'Active',
+                certificateRef: 'COSHH-CHEM-4412',
+                notes: 'Active Pharmaceutical Ingredient (API) dust containment certified.',
+                createdAt: now.toISOString()
+              }
+            ];
+            for (const c of initialCerts) {
+              await db.complianceCertificates.add(c as any);
+            }
+            certs = await db.complianceCertificates.toArray();
+          }
+          setCertificates(certs);
+        }
+      } catch (err) {
+        console.error('Failed to check industry compliance settings:', err);
+      }
+    }
+    checkIndustryModule();
+  }, [profile?.id, profile?.name, profile?.department]);
   const [isSubmittingLeave, setIsSubmittingLeave] = useState(false);
   const [deletingLeaveId, setDeletingLeaveId] = useState<number | null>(null);
   const [newLeave, setNewLeave] = useState({
@@ -505,6 +599,16 @@ export default function EmployeeHub({
         >
           <Calendar className="w-4 h-4" /> Annual Leave Tracker
         </button>
+        {isMhraEnabled && (
+          <button
+            onClick={() => setActiveTab('compliance')}
+            className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition ${
+              activeTab === 'compliance' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4 text-emerald-400" /> MHRA Compliance
+          </button>
+        )}
 
         <button
           onClick={() => setActiveTab('support' as any)}
@@ -1084,6 +1188,220 @@ export default function EmployeeHub({
               <span className="text-xl font-extrabold text-purple-400">{prog.title}</span>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Tab: Pharma / MHRA Compliance Matrix (Opt-in only) */}
+      {activeTab === 'compliance' && isMhraEnabled && (
+        <div className="space-y-6">
+          <div className="p-6 rounded-2xl border border-slate-800 bg-slate-900/40">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-800">
+              <div>
+                <h3 className="font-bold text-slate-100 text-base flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-400" /> Pharma & MHRA Regulatory Compliance Matrix
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Active industry vertical: Statutory GDP, GMP, Pharmacovigilance, and COSHH certifications for MHRA audits.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-mono px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  {certificates.filter(c => c.status === 'Active').length}/{certificates.length} Active
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsRenewModalOpen(true)}
+                  className="px-3.5 py-1.5 text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg flex items-center gap-1.5 transition shadow"
+                >
+                  <Plus className="w-4 h-4" /> Log / Renew Certificate
+                </button>
+              </div>
+            </div>
+
+            {/* Matrix Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+              {certificates.map((cert) => {
+                const isExpiring = cert.status === 'Expiring Soon';
+                const isExpired = cert.status === 'Expired';
+                return (
+                  <div
+                    key={cert.id || cert.certificationName}
+                    className={`p-5 rounded-xl border transition ${
+                      isExpired
+                        ? 'bg-rose-950/20 border-rose-500/40'
+                        : isExpiring
+                        ? 'bg-amber-950/20 border-amber-500/40'
+                        : 'bg-slate-950/80 border-slate-800/80 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider mb-2 border ${
+                          isExpired
+                            ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                            : isExpiring
+                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                            : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                        }`}>
+                          {cert.status}
+                        </span>
+                        <h4 className="text-sm font-bold text-slate-100">{cert.certificationName}</h4>
+                        <p className="text-xs text-slate-400 mt-0.5">Issuing Body: {cert.issuingBody}</p>
+                      </div>
+                      <span className="text-[11px] font-mono text-slate-400 bg-slate-900 px-2 py-1 rounded border border-slate-800">
+                        {cert.certificateRef || 'REF-PENDING'}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                      <div>
+                        <span>Completed: {cert.completedDate}</span>
+                        <span className="mx-2">•</span>
+                        <span className={isExpiring ? 'text-amber-400 font-semibold' : isExpired ? 'text-rose-400 font-semibold' : ''}>
+                          Expires: {cert.expiryDate}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const newExpiry = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+                          await db.complianceCertificates.update(cert.id!, {
+                            status: 'Active',
+                            completedDate: new Date().toISOString().slice(0, 10),
+                            expiryDate: newExpiry
+                          });
+                          const updated = await db.complianceCertificates.toArray();
+                          setCertificates(updated);
+                        }}
+                        className="text-[11px] text-amber-400 hover:text-amber-300 font-medium hover:underline"
+                      >
+                        Quick Refresh (+35 XP)
+                      </button>
+                    </div>
+
+                    {cert.notes && (
+                      <p className="text-[11px] text-slate-400 mt-2 bg-slate-900/50 p-2 rounded border border-slate-800/50 italic">
+                        {cert.notes}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Modal to log or renew certificate */}
+          {isRenewModalOpen && (
+            <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <h4 className="font-bold text-slate-100 text-sm flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" /> Log Regulatory Certificate Renewal
+                  </h4>
+                  <button
+                    onClick={() => setIsRenewModalOpen(false)}
+                    className="p-1 text-slate-400 hover:text-slate-200"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Standard / Certification Name</label>
+                    <input
+                      type="text"
+                      value={certForm.certificationName}
+                      onChange={(e) => setCertForm({ ...certForm, certificationName: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Issuing Authority / Body</label>
+                    <input
+                      type="text"
+                      value={certForm.issuingBody}
+                      onChange={(e) => setCertForm({ ...certForm, issuingBody: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Completed Date</label>
+                      <input
+                        type="date"
+                        value={certForm.completedDate}
+                        onChange={(e) => setCertForm({ ...certForm, completedDate: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Expiry Date</label>
+                      <input
+                        type="date"
+                        value={certForm.expiryDate}
+                        onChange={(e) => setCertForm({ ...certForm, expiryDate: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Certificate Number / Reference</label>
+                    <input
+                      type="text"
+                      value={certForm.certificateRef}
+                      onChange={(e) => setCertForm({ ...certForm, certificateRef: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Auditor / Refresher Notes</label>
+                    <textarea
+                      rows={2}
+                      value={certForm.notes}
+                      onChange={(e) => setCertForm({ ...certForm, notes: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsRenewModalOpen(false)}
+                    className="flex-1 py-2 text-xs text-slate-400 border border-slate-800 rounded-lg hover:bg-slate-850"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const newCert: Omit<ComplianceCertificate, 'id'> = {
+                        employeeId: profile?.id || 1,
+                        employeeName: profile?.name || 'Staff Member',
+                        department: profile?.department || 'Operations',
+                        certificationName: certForm.certificationName,
+                        issuingBody: certForm.issuingBody,
+                        completedDate: certForm.completedDate,
+                        expiryDate: certForm.expiryDate,
+                        status: 'Active',
+                        certificateRef: certForm.certificateRef,
+                        notes: certForm.notes,
+                        createdAt: new Date().toISOString()
+                      };
+                      await db.complianceCertificates.add(newCert as any);
+                      const updated = await db.complianceCertificates.toArray();
+                      setCertificates(updated);
+                      setIsRenewModalOpen(false);
+                    }}
+                    className="flex-1 py-2 text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg transition shadow"
+                  >
+                    Save & Award +35 XP
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>
