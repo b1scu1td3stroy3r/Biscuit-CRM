@@ -11,6 +11,9 @@ import '../lib/cloudGuard';
 
 import { SalesPacingHUD } from '../components/SalesPacingHUD';
 import LiveStockHUDModal from '../components/LiveStockHUDModal';
+import AccountAuditDrawer from '../components/AccountAuditDrawer';
+import LiveActivityToasts from '../components/LiveActivityToasts';
+import { executeWorkflowRules } from '../packages/storage/src/workflowEngine';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Package, 
   ShieldCheck, Zap, Database, Building2, Headphones, Calendar as CalendarIcon, 
@@ -320,6 +323,8 @@ export default function Dashboard() {
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isHealthOpen, setIsHealthOpen] = useState(false);
   const [isStockHUDOpen, setIsStockHUDOpen] = useState(false);
+  const [selectedAuditContact, setSelectedAuditContact] = useState<any | null>(null);
+  const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
   const [selectedDealForDrawer, setSelectedDealForDrawer] = useState<Contact | null>(null);
 
   const [senderName, setSenderName] = useState<string>('Managing Director');
@@ -1464,6 +1469,17 @@ export default function Dashboard() {
         isOpen={isStockHUDOpen}
         onClose={() => setIsStockHUDOpen(false)}
       />
+      {/* Enterprise Unified Account Audit & Activity Timeline Drawer */}
+      <AccountAuditDrawer
+        contact={selectedAuditContact}
+        isOpen={isAuditDrawerOpen}
+        onClose={() => setIsAuditDrawerOpen(false)}
+        currentUser={senderName}
+      />
+
+      {/* Global Automated Workflow Activity Toasts */}
+      <LiveActivityToasts />
+
 
       {/* Screen: Data Import & Onboarding Wizard */}
       {viewMode === 'import' && (isMD || isIT) && (
