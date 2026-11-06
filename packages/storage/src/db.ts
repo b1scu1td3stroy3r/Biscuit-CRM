@@ -154,14 +154,17 @@ export interface CompanySetting {
   updatedAt: string;
 }
 
-export type IndustryVertical = 'general' | 'design_agency' | 'pharma_healthcare' | 'charity_nonprofit';
+export type IndustryVertical = 'general' | 'design_agency' | 'pharma_healthcare' | 'financial_services' | 'education_provider' | 'charity_nonprofit';
 
 export interface IndustryModulesConfig {
   industry: IndustryVertical;
   enableMhraCompliance: boolean;
+  enableFcaCompliance: boolean;
+  enableOfqualCompliance: boolean;
   enableCreativeSignoffs: boolean;
   enableGiftAid: boolean;
   updatedAt: string;
+  configuredBy?: string;
 }
 
 export interface Contact {
