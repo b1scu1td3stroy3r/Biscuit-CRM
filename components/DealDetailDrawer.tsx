@@ -156,13 +156,23 @@ export default function DealDetailDrawer({
               </button>
               <button
                 onClick={() => setActiveTab('notes')}
-                className={`py-3 text-xs font-semibold border-b-2 transition ${
+                className={`py-3 text-xs font-semibold border-b-2 mr-6 transition ${
                   activeTab === 'notes'
                     ? 'border-amber-500 text-amber-400'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
                 Notes & Timeline
+              </button>
+              <button
+                onClick={() => setActiveTab('milestones')}
+                className={`py-3 text-xs font-semibold border-b-2 flex items-center gap-1.5 transition ${
+                  activeTab === 'milestones'
+                    ? 'border-amber-500 text-amber-400'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" /> Sign-Off & Proofing
               </button>
             </div>
 
@@ -376,6 +386,79 @@ export default function DealDetailDrawer({
 
                   <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800/80 text-xs font-mono text-slate-300 max-h-80 overflow-y-auto whitespace-pre-wrap leading-relaxed">
                     {contact.internalNotes || 'No notes logged yet. Use the field above to add notes.'}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'milestones' && (
+                <div className="space-y-4">
+                  <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2.5">
+                    <ShieldCheck className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold text-amber-300">Design Agency Creative Sign-Off Gate</p>
+                      <p className="text-[11px] text-slate-400">
+                        Enforce client scope, brand assets, and digital proof sign-offs before pushing deals to production or closing.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {[
+                      { id: 'brief', title: '1. Creative Scope & Brief Locked', desc: 'Deliverables, specifications, and commercial budget agreed in writing.' },
+                      { id: 'assets', title: '2. Asset & Copy Handoff Completed', desc: 'Vector logos, high-res assets, typography, and signed-off copy received.' },
+                      { id: 'qa', title: '3. Internal QA & Studio Director Review', desc: 'Pre-flight checks passed: layout, bleed, responsive breakpoints, and color specs.' },
+                      { id: 'signoff', title: '4. Client Digital Proof Sign-Off', desc: 'Written approval or digital sign-off verified by the client decision-maker.' }
+                    ].map((step) => {
+                      const signoffs = (contact.customFields as any)?.creativeSignoffs || {};
+                      const isDone = !!signoffs[step.id]?.completed;
+                      const signedBy = signoffs[step.id]?.signedBy || 'Lead Producer';
+                      const signedAt = signoffs[step.id]?.timestamp;
+
+                      return (
+                        <div
+                          key={step.id}
+                          className={`p-3.5 rounded-xl border transition ${
+                            isDone ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-slate-950 border-slate-800/80'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <p className={`text-xs font-bold ${isDone ? 'text-emerald-300' : 'text-slate-200'}`}>
+                                {step.title}
+                              </p>
+                              <p className="text-[11px] text-slate-400">{step.desc}</p>
+                              {isDone && (
+                                <p className="text-[10px] text-emerald-400/80 font-mono mt-1">
+                                  ✓ Signed by {signedBy} {signedAt ? `• ${new Date(signedAt).toLocaleDateString()}` : ''}
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const newSignoffs = {
+                                  ...signoffs,
+                                  [step.id]: isDone
+                                    ? { completed: false }
+                                    : { completed: true, signedBy: contact.accountManager || 'Producer', timestamp: new Date().toISOString()}
+                                };
+                                const updatedCustom = { ...(contact.customFields || {}), creativeSignoffs: newSignoffs };
+                                await db.contacts.update(contact.id!, { customFields: updatedCustom, updatedAt: new Date().toISOString() });
+                                onContactUpdated();
+                              }}
+                              className={`shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 border transition ${
+                                isDone
+                                  ? 'bg-emerald-500 text-slate-950 border-emerald-400'
+                                  : 'bg-slate-900 text-slate-400 hover:text-slate-200 border-slate-700'
+                              }`}
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              {isDone ? 'Approved' : 'Sign Off'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
