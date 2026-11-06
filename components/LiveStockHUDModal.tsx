@@ -7,12 +7,25 @@ import { db, InventoryItem } from "../packages/storage/src/db";
 export default function LiveStockHUDModal({
   isOpen,
   onClose,
+  currentUser,
   currentDepartment = "General"
 }: {
+
   isOpen: boolean;
   onClose: () => void;
+  currentUser?: any;
   currentDepartment?: string;
 }) {
+    const userRoleStr = typeof currentUser === 'string'
+    ? currentUser
+    : (currentUser as any)?.role || (currentUser as any)?.name || (typeof window !== 'undefined' ? localStorage.getItem('biscuit_crm_user_role') || 'Managing Director' : 'Managing Director');
+
+  const canImportStock = [
+    'Managing Director',
+    'Operations Manager',
+    'IT Manager',
+    'Procurement Manager'
+  ].includes(userRoleStr);
   const [stockItems, setStockItems] = useState<InventoryItem[]>([]);
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -135,11 +148,13 @@ export default function LiveStockHUDModal({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <label className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg cursor-pointer transition flex items-center gap-1.5 border border-slate-700">
-              <Upload className="w-3.5 h-3.5 text-indigo-400" />
-              <span>{isImporting ? 'Importing...' : 'Import Stock CSV'}</span>
-              <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" />
-            </label>
+            {canImportStock && (
+              <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 text-xs font-semibold border border-indigo-500/30 transition shadow-sm">
+                <Upload className="w-3.5 h-3.5 text-indigo-400" />
+                <span>{isImporting ? 'Importing...' : 'Import Stock CSV'}</span>
+                <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" />
+              </label>
+            )}
             <button
               onClick={onClose}
               className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/80 transition"

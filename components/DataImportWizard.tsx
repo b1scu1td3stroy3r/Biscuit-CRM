@@ -179,7 +179,7 @@ export default function DataImportWizard({ onImportComplete, currentUser }: Data
           onClick={handleDownloadTemplate}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition"
         >
-          <Download className="w-3.5 h-3.5 text-amber-400" /> Download Sample CSV Template
+          <Download className="w-3.5 h-3.5 text-amber-400" /> Download Blank Template CSV Template
         </button>
       </div>
 
