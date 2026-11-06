@@ -634,6 +634,222 @@ export default function ITHelpdesk({ currentProfile, onAwardXP }: ITHelpdeskProp
         </div>
       )}
 
+      {/* TAB 3: STATUTORY GOVERNANCE & SECTOR POLICIES */}
+      {activeTab === 'governance' && (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-indigo-400" />
+                  Statutory Industry Scoping & Regulatory Policies
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Activate sector-specific compliance rules, statutory audit workflows, and specialized account profiles.
+                </p>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    await db.settings.put({
+                      key: 'biscuit_industry_modules',
+                      value: industryConfig,
+                      updatedAt: new Date().toISOString()
+                    });
+                    setSaveStatus('Industry policies saved successfully.');
+                    setTimeout(() => setSaveStatus(null), 3500);
+                  } catch (e: any) {
+                    setSaveStatus(`Failed to save: ${e?.message || 'Unknown error'}`);
+                  }
+                }}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center gap-2"
+              >
+                <CheckCircle2 className="w-4 h-4" /> Save Governance Config
+              </button>
+            </div>
+
+            {saveStatus && (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs rounded-xl font-medium">
+                {saveStatus}
+              </div>
+            )}
+
+            {/* Vertical Selector */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                <label className="text-xs font-bold text-slate-200 block">Primary Enterprise Vertical</label>
+                <select
+                  value={industryConfig.industry}
+                  onChange={(e) => setIndustryConfig({ ...industryConfig, industry: e.target.value as any })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="general">Standard Commercial B2B / General Enterprise</option>
+                  <option value="construction">Construction & Building Contracting (CIS Regulated)</option>
+                  <option value="insurance">Insurance Underwriting, Broking & Policy Schedules</option>
+                  <option value="veterinary">Veterinary Surgery & Animal Care Practice</option>
+                  <option value="museums_sports">Museums, Heritage Galleries & Sports Clubs</option>
+                  <option value="pharma_healthcare">Pharmaceutical, MHRA & Healthcare Supply</option>
+                  <option value="financial_services">Financial Services, FCA Audited & Credit</option>
+                  <option value="charity_nonprofit">Charity, Foundation & Non-Profit (Gift Aid)</option>
+                  <option value="design_agency">Creative, Digital & Design Agency</option>
+                  <option value="education_provider">Education, Training & Ofqual Provider</option>
+                </select>
+                <p className="text-[11px] text-slate-500">
+                  Select your primary sector to configure default workflow templates and account validation schemes.
+                </p>
+              </div>
+
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-1">
+                <span className="text-xs font-bold text-slate-200 block">Compliance Audit Stamp</span>
+                <p className="text-[11px] text-slate-400">
+                  Last Updated: <span className="font-mono text-slate-300">{industryConfig.updatedAt.slice(0, 16).replace('T', ' ')}</span>
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Configured By: <span className="text-indigo-400 font-semibold">{industryConfig.configuredBy || 'IT Lead'}</span>
+                </p>
+                <p className="text-[11px] text-slate-500 pt-1">
+                  Changes made here take immediate effect for all users across customer services, sales, and billing desks.
+                </p>
+              </div>
+            </div>
+
+            {/* Statutory Compliance Feature Toggles */}
+            <div className="pt-4 space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Sector Compliance Modules & Rules</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Construction CIS */}
+                <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl flex items-start justify-between gap-4">
+                  <div>
+                    <span className="text-xs font-bold text-slate-200 block">Construction Industry Scheme (CIS)</span>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Enforce HMRC CIS tax deduction rates (20% standard / 30% unverified) and monthly subcontractor returns on billing.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!industryConfig.enableCisTax}
+                    onChange={(e) => setIndustryConfig({ ...industryConfig, enableCisTax: e.target.checked })}
+                    className="w-4 h-4 rounded text-indigo-600 bg-slate-900 border-slate-700 mt-1 cursor-pointer"
+                  />
+                </div>
+
+                {/* Veterinary Clinical Records */}
+                <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl flex items-start justify-between gap-4">
+                  <div>
+                    <span className="text-xs font-bold text-slate-200 block">Veterinary Patient Records</span>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Enable pet/animal clinical profiles with microchip numbers, breed registries, and vaccination schedule tracking.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!industryConfig.enableVeterinaryRecords}
+                    onChange={(e) => setIndustryConfig({ ...industryConfig, enableVeterinaryRecords: e.target.checked })}
+                    className="w-4 h-4 rounded text-indigo-600 bg-slate-900 border-slate-700 mt-1 cursor-pointer"
+                  />
+                </div>
+
+                {/* Insurance Policy Schedules */}
+                <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl flex items-start justify-between gap-4">
+                  <div>
+                    <span className="text-xs font-bold text-slate-200 block">Insurance Underwriting & Policy Schedules</span>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Activate policy schedules, premium payment horizons, underwriting notes, and automated annual renewal notices.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!industryConfig.enableInsuranceSchedules}
+                    onChange={(e) => setIndustryConfig({ ...industryConfig, enableInsuranceSchedules: e.target.checked })}
+                    className="w-4 h-4 rounded text-indigo-600 bg-slate-900 border-slate-700 mt-1 cursor-pointer"
+                  />
+                </div>
+
+                {/* Museums & Sports Clubs */}
+                <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl flex items-start justify-between gap-4">
+                  <div>
+                    <span className="text-xs font-bold text-slate-200 block">Museums & Sports Memberships</span>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Enable season tickets, member tier perks, recurring patron renewal badges, and gift-aid entry passes.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!industryConfig.enableSportsMuseumMemberships}
+                    onChange={(e) => setIndustryConfig({ ...industryConfig, enableSportsMuseumMemberships: e.target.checked })}
+                    className="w-4 h-4 rounded text-indigo-600 bg-slate-900 border-slate-700 mt-1 cursor-pointer"
+                  />
+                </div>
+
+                {/* Pharma MHRA */}
+                <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl flex items-start justify-between gap-4">
+                  <div>
+                    <span className="text-xs font-bold text-slate-200 block">Pharma MHRA & Cold-Chain Audit</span>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Batch tracking, temperature-controlled release checks, and certified QP sign-off gates.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={industryConfig.enableMhraCompliance}
+                    onChange={(e) => setIndustryConfig({ ...industryConfig, enableMhraCompliance: e.target.checked })}
+                    className="w-4 h-4 rounded text-indigo-600 bg-slate-900 border-slate-700 mt-1 cursor-pointer"
+                  />
+                </div>
+
+                {/* Charity Gift Aid */}
+                <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl flex items-start justify-between gap-4">
+                  <div>
+                    <span className="text-xs font-bold text-slate-200 block">Charity & Non-Profit Gift Aid (25%)</span>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Enable donor declaration logs, HMRC 25% reclaim batch exports, and eligible gift auditing.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={industryConfig.enableGiftAid}
+                    onChange={(e) => setIndustryConfig({ ...industryConfig, enableGiftAid: e.target.checked })}
+                    className="w-4 h-4 rounded text-indigo-600 bg-slate-900 border-slate-700 mt-1 cursor-pointer"
+                  />
+                </div>
+
+                {/* Creative Agency Signoffs */}
+                <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl flex items-start justify-between gap-4">
+                  <div>
+                    <span className="text-xs font-bold text-slate-200 block">Design Agency Multi-Stage Sign-Off</span>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Client milestone approval checklists, proofing feedback cycles, and copyright handover deeds.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={industryConfig.enableCreativeSignoffs}
+                    onChange={(e) => setIndustryConfig({ ...industryConfig, enableCreativeSignoffs: e.target.checked })}
+                    className="w-4 h-4 rounded text-indigo-600 bg-slate-900 border-slate-700 mt-1 cursor-pointer"
+                  />
+                </div>
+
+                {/* Financial Services FCA */}
+                <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl flex items-start justify-between gap-4">
+                  <div>
+                    <span className="text-xs font-bold text-slate-200 block">FCA Suitability & Insolvency Checks</span>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Mandatory credit risk grading, AML verifications, and regulatory capital compliance logging.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={industryConfig.enableFcaCompliance}
+                    onChange={(e) => setIndustryConfig({ ...industryConfig, enableFcaCompliance: e.target.checked })}
+                    className="w-4 h-4 rounded text-indigo-600 bg-slate-900 border-slate-700 mt-1 cursor-pointer"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Ticket Details & Resolution Drawer */}
       {selectedTicket && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-end p-0">
