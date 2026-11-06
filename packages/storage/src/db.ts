@@ -1,4 +1,20 @@
 
+export interface InventoryItem {
+  id?: number;
+  sku: string;
+  name: string;
+  category: string;
+  binLocation: string;
+  onHand: number;
+  reserved: number;
+  availableToSell: number;
+  reorderPoint?: number;
+  status: 'Healthy' | 'Low Stock' | 'Critical';
+  unitPrice?: number;
+  updatedAt: string;
+}
+
+
 export interface CustomFieldDefinition {
   id: string;
   name: string;
@@ -380,6 +396,7 @@ export interface GiftAidClaim {
 
 export class BiscuitDB extends Dexie {
   contacts!: Table<Contact, number>;
+  inventory!: Table<InventoryItem, number>;
   journalEntries!: Table<JournalEntry, number>;
   bankLines!: Table<BankStatementLine, number>;
   projects!: Table<ProjectTask, number>;
