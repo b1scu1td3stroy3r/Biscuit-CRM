@@ -1,5 +1,6 @@
 'use client';
 
+import { parseBankCSV, ParsedTransaction } from '../packages/storage/src/bankParser';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   PoundSterling,
@@ -34,7 +35,8 @@ import {
   Truck,
   Ban,
   FileText,
-  X
+  X,
+  Landmark,
 } from 'lucide-react';
 import { Contact, EmployeeProfile, db, GiftAidClaim, IndustryModulesConfig } from '../packages/storage/src/db';
 
@@ -81,12 +83,62 @@ export default function FinanceDesk({
   employees = []
 }: FinanceDeskProps) {
   // Navigation & View Filters
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'credit_control' | 'payments' | 'payables' | 'payroll' | 'ledger' | 'tax_hmrc' | 'gift_aid'>('dashboard');
+    // Zero-Knowledge Bank Feed & Reconciliation State
+  const [bankFileLoading, setBankFileLoading] = useState(false);
+  const [parsedTransactions, setParsedTransactions] = useState<ParsedTransaction[]>([]);
+  const [reconciledCount, setReconciledCount] = useState(0);
+
+  const handleBankFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBankFileLoading(true);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = parseBankCSV(text);
+        setParsedTransactions(parsed);
+      } catch (err) {
+        console.error("Failed to parse bank file:", err);
+      } finally {
+        setBankFileLoading(false);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleReconcileLine = async (tx: ParsedTransaction, idx: number) => {
+    try {
+      await db.bankLines.add({
+        date: tx.date,
+        description: tx.description,
+        amount: tx.amount,
+        type: tx.type,
+        status: 'RECONCILED'
+      });
+      await db.journalEntries.add({
+        entryDate: tx.date,
+        reference: `RECON-${Date.now().toString().slice(-6)}`,
+        memo: tx.description,
+        debitAccount: tx.type === 'CREDIT' ? '1200 Bank Current Account' : '5000 Cost of Sales / Expense',
+        creditAccount: tx.type === 'CREDIT' ? '4000 Sales Revenue' : '1200 Bank Current Account',
+        amount: tx.amount,
+        reconciled: true,
+        createdAt: new Date().toISOString()
+      });
+      setReconciledCount(prev => prev + 1);
+      setParsedTransactions(prev => prev.filter((_, i) => i !== idx));
+    } catch (err) {
+      console.error("Reconciliation commit error:", err);
+    }
+  };
+
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'credit_control' | 'payments' | 'payables' | 'payroll' | 'reconciliation' | 'ledger' | 'tax_hmrc' | 'gift_aid'>('dashboard');
   const [isGiftAidEnabled, setIsGiftAidEnabled] = useState(false);
   const [giftAidClaims, setGiftAidClaims] = useState<GiftAidClaim[]>([]);
   const [isNewGiftAidModalOpen, setIsNewGiftAidModalOpen] = useState(false);
   const [newDonation, setNewDonation] = useState({
-    donorName: 'Dr. Alistair Finch',
+    donorName: '',
     donorAddress: '14 Orchard Way, Oxford',
     donorPostcode: 'OX2 6NN',
     donationAmount: 200,
@@ -172,7 +224,7 @@ export default function FinanceDesk({
   const [payMethod, setPayMethod] = useState<'Bank Transfer' | 'Corporate Card'>('Bank Transfer');
   const [cardDetails, setCardDetails] = useState({
     cardLast4: '4192',
-    cardHolder: 'Corporate Cardholder (Biscuit CRM Operating)',
+    cardHolder: '',
     authCode: ''
   });
   const [bankDetails, setBankDetails] = useState({
@@ -1490,6 +1542,65 @@ export default function FinanceDesk({
       )}
 
       {/* VIEW 5: GRANULAR AUDIT LEDGER */}
+      {activeTab === 'reconciliation' && (
+        <div className="space-y-6">
+          <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono text-xs">BYOD Zero-Knowledge</span>
+                <h3 className="text-sm font-bold text-white">Client-Side Bank Feed & Reconciliation Desk</h3>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Upload your bank statement (.csv or .ofx). Transactions parse strictly in browser memory without sending data to an external server.
+              </p>
+            </div>
+            <label className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg cursor-pointer transition flex items-center gap-2 shadow-lg shadow-emerald-950/40">
+              <Landmark className="w-4 h-4" />
+              <span>{bankFileLoading ? 'Parsing in Memory...' : 'Upload Bank Statement'}</span>
+              <input type="file" accept=".csv,.ofx,.qif,.txt" onChange={handleBankFileUpload} className="hidden" />
+            </label>
+          </div>
+
+          {parsedTransactions.length > 0 ? (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+              <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-200">
+                  Unmatched In-Memory Transactions ({parsedTransactions.length})
+                </span>
+                <span className="text-xs text-emerald-400 font-medium">Reconciled in this session: {reconciledCount}</span>
+              </div>
+              <div className="divide-y divide-slate-800/60 max-h-[500px] overflow-y-auto">
+                {parsedTransactions.map((tx, idx) => (
+                  <div key={idx} className="p-4 flex items-center justify-between hover:bg-slate-800/30 transition text-xs">
+                    <div className="space-y-1">
+                      <div className="font-semibold text-white">{tx.description}</div>
+                      <div className="text-[11px] text-slate-400 font-mono">{tx.date}</div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className={`font-mono font-bold ${tx.type === 'CREDIT' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {tx.type === 'CREDIT' ? '+' : '-'}£{tx.amount.toFixed(2)}
+                      </span>
+                      <button
+                        onClick={() => handleReconcileLine(tx, idx)}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-[11px] font-semibold transition flex items-center gap-1"
+                      >
+                        Match & Post Ledger
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="p-12 text-center border-2 border-dashed border-slate-800 rounded-2xl">
+              <Landmark className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+              <p className="text-xs text-slate-400">No active bank statement loaded.</p>
+              <p className="text-[11px] text-slate-600 mt-0.5">Upload a bank statement export to reconcile debits and credits.</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {activeTab === 'ledger' && (
         <div className="space-y-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
