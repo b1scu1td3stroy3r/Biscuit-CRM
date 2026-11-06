@@ -1,4 +1,29 @@
 
+export interface CustomFieldDefinition {
+  id: string;
+  name: string;
+  key: string;
+  targetEntity: 'contact' | 'deal' | 'order';
+  fieldType: 'text' | 'number' | 'currency' | 'date' | 'select';
+  options?: string[]; // for select type
+  isRequired?: boolean;
+}
+
+export interface AutomationRule {
+  id: string;
+  name: string;
+  triggerEvent: 'DEAL_STAGE_CHANGED' | 'PAYMENT_RECEIVED' | 'INVENTORY_LOW';
+  triggerCondition?: {
+    field?: string;
+    operator?: 'equals' | 'greater_than' | 'less_than';
+    value?: string | number;
+  };
+  actionType: 'CREATE_WMS_PICKING' | 'CREATE_FINANCE_DRAFT' | 'BROADCAST_ALERT' | 'ASSIGN_TASK';
+  actionPayload?: Record<string, any>;
+  isActive: boolean;
+}
+
+
 export interface JournalEntry {
   id?: number;
   entryDate: string;
@@ -227,6 +252,7 @@ export interface IndustryModulesConfig {
 }
 
 export interface Contact {
+  customFields?: Record<string, any>;
   id?: number;
   accountNumber: string;
   name: string;

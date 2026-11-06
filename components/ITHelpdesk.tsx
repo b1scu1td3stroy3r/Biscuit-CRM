@@ -41,7 +41,49 @@ interface ITHelpdeskProps {
 type AuditHorizon = 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'ytd';
 
 export default function ITHelpdesk({ currentProfile, onAwardXP }: ITHelpdeskProps) {
-  const [activeTab, setActiveTab] = useState<'kanban' | 'audits' | 'governance'>('kanban');
+  const [activeTab, setActiveTab] = useState<'kanban' | 'audits' | 'governance' | 'schema' | 'automations'>('kanban');
+    // Dynamic Schema & Automation State
+  const [customFields, setCustomFields] = useState<any[]>([]);
+  const [newFieldName, setNewFieldName] = useState('');
+  const [newFieldType, setNewFieldType] = useState<'text' | 'number' | 'currency' | 'date' | 'select'>('text');
+  
+  const [automations, setAutomations] = useState<any[]>([]);
+  const [newRuleName, setNewRuleName] = useState('');
+  const [newRuleTrigger, setNewRuleTrigger] = useState('DEAL_STAGE_CHANGED');
+  const [newRuleAction, setNewRuleAction] = useState('CREATE_WMS_PICKING');
+
+  useEffect(() => {
+    async function loadStudioData() {
+      try {
+        const fields = await db.settings.get('biscuit_custom_fields');
+        if (fields && fields.value) setCustomFields(fields.value);
+
+        const rules = await db.settings.get('biscuit_automation_recipes');
+        if (rules && rules.value) setAutomations(rules.value);
+      } catch (err) {
+        console.warn('Error loading studio settings:', err);
+      }
+    }
+    loadStudioData();
+  }, []);
+
+  const handleAddCustomField = async () => {
+    if (!newFieldName.trim()) return;
+    const key = newFieldName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const updated = [...customFields, { id: 'cf_' + Date.now(), name: newFieldName, key, fieldType: newFieldType, targetEntity: 'contact' }];
+    setCustomFields(updated);
+    setNewFieldName('');
+    await db.settings.put({ key: 'biscuit_custom_fields', value: updated, updatedAt: new Date().toISOString() });
+  };
+
+  const handleAddAutomation = async () => {
+    if (!newRuleName.trim()) return;
+    const updated = [...automations, { id: 'auto_' + Date.now(), name: newRuleName, triggerEvent: newRuleTrigger, actionType: newRuleAction, isActive: true }];
+    setAutomations(updated);
+    setNewRuleName('');
+    await db.settings.put({ key: 'biscuit_automation_recipes', value: updated, updatedAt: new Date().toISOString() });
+  };
+
   const [industryConfig, setIndustryConfig] = useState<IndustryModulesConfig>({
     industry: 'general',
     enableMhraCompliance: false,
@@ -635,6 +677,122 @@ export default function ITHelpdesk({ currentProfile, onAwardXP }: ITHelpdeskProp
       )}
 
       {/* TAB 3: STATUTORY GOVERNANCE & SECTOR POLICIES */}
+      {activeTab === 'schema' && (
+        <div className="space-y-6">
+          <div className="p-5 bg-slate-900 border border-slate-800 rounded-2xl">
+            <h3 className="text-sm font-bold text-white mb-1">Salesforce-Grade Custom Schema Engine</h3>
+            <p className="text-xs text-slate-400 mb-4">Define custom fields at runtime. Zero-knowledge local persistence ensures fields render across Deal Drawers without hardcoded schemas.</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                placeholder="Field Label (e.g. VAT Exempt Number, Region Code)"
+                value={newFieldName}
+                onChange={(e) => setNewFieldName(e.target.value)}
+                className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 flex-1 min-w-[200px]"
+              />
+              <select
+                value={newFieldType}
+                onChange={(e) => setNewFieldType(e.target.value as any)}
+                className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+              >
+                <option value="text">Text String</option>
+                <option value="number">Numeric Value</option>
+                <option value="currency">Currency (£ GBP)</option>
+                <option value="date">Date Picker</option>
+              </select>
+              <button
+                onClick={handleAddCustomField}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg transition"
+              >
+                Create Field
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">Active Custom Fields ({customFields.length})</h4>
+            {customFields.length === 0 ? (
+              <p className="text-xs text-slate-500 italic">No custom fields defined yet. Add one above.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {customFields.map((field) => (
+                  <div key={field.id} className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-white block">{field.name}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">key: {field.key} | type: {field.fieldType}</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">Active</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'automations' && (
+        <div className="space-y-6">
+          <div className="p-5 bg-slate-900 border border-slate-800 rounded-2xl">
+            <h3 className="text-sm font-bold text-white mb-1">Visual Workflow & Automation Builder</h3>
+            <p className="text-xs text-slate-400 mb-4">Set up declarative If-This-Then-That event recipes executed strictly client-side.</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                placeholder="Rule Name (e.g. Release WMS Picking when Deal Closes)"
+                value={newRuleName}
+                onChange={(e) => setNewRuleName(e.target.value)}
+                className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 flex-1 min-w-[200px]"
+              />
+              <select
+                value={newRuleTrigger}
+                onChange={(e) => setNewRuleTrigger(e.target.value)}
+                className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+              >
+                <option value="DEAL_STAGE_CHANGED">When Deal Stage Advances</option>
+                <option value="PAYMENT_RECEIVED">When Bank Payment Received</option>
+                <option value="INVENTORY_LOW">When Physical Stock Drops Below Minimum</option>
+              </select>
+              <select
+                value={newRuleAction}
+                onChange={(e) => setNewRuleAction(e.target.value)}
+                className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+              >
+                <option value="CREATE_WMS_PICKING">Generate WMS Picking Manifest</option>
+                <option value="CREATE_FINANCE_DRAFT">Draft VAT Remittance in Finance</option>
+                <option value="BROADCAST_ALERT">Fire System Broadcast Toast</option>
+              </select>
+              <button
+                onClick={handleAddAutomation}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition"
+              >
+                Add Rule
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">Configured Rules ({automations.length})</h4>
+            {automations.length === 0 ? (
+              <p className="text-xs text-slate-500 italic">No automated recipes active yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {automations.map((rule) => (
+                  <div key={rule.id} className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between text-xs">
+                    <div>
+                      <div className="font-bold text-white">{rule.name}</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        <span className="text-indigo-400 font-mono">WHEN</span> {rule.triggerEvent} <span className="text-emerald-400 font-mono">THEN</span> {rule.actionType}
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Running</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {activeTab === 'governance' && (
         <div className="space-y-6">
           <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4">
