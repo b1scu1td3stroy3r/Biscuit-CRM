@@ -1,3 +1,27 @@
+
+export interface JournalEntry {
+  id?: number;
+  entryDate: string;
+  reference: string;
+  memo: string;
+  debitAccount: string;
+  creditAccount: string;
+  amount: number;
+  linkedEntityId?: number;
+  linkedEntityType?: 'contact' | 'order' | 'po';
+  reconciled: boolean;
+  createdAt: string;
+}
+
+export interface BankStatementLine {
+  id?: number;
+  date: string;
+  description: string;
+  amount: number;
+  type: 'DEBIT' | 'CREDIT';
+  matchedJournalId?: number;
+  status: 'PENDING' | 'RECONCILED' | 'IGNORED';
+}
 import Dexie, { Table } from 'dexie';
 
 export type CloudProvider = 'google' | 'microsoft' | 'local';
@@ -330,6 +354,8 @@ export interface GiftAidClaim {
 
 export class BiscuitDB extends Dexie {
   contacts!: Table<Contact, number>;
+  journalEntries!: Table<JournalEntry, number>;
+  bankLines!: Table<BankStatementLine, number>;
   projects!: Table<ProjectTask, number>;
   templates!: Table<StoredTemplate, number>;
   auditLogs!: Table<AuditRecord, number>;
