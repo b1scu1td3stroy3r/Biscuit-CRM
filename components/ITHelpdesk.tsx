@@ -8,7 +8,9 @@ import {
   ITTicketPriority, 
   ITTicketCategory, 
   EmployeeProfile,
-  DepartmentRole 
+  DepartmentRole,
+  IndustryModulesConfig,
+  IndustryVertical
 } from '../packages/storage/src/db';
 import { 
   LifeBuoy, 
@@ -39,7 +41,32 @@ interface ITHelpdeskProps {
 type AuditHorizon = 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'ytd';
 
 export default function ITHelpdesk({ currentProfile, onAwardXP }: ITHelpdeskProps) {
-  const [activeTab, setActiveTab] = useState<'kanban' | 'audits'>('kanban');
+  const [activeTab, setActiveTab] = useState<'kanban' | 'audits' | 'governance'>('kanban');
+  const [industryConfig, setIndustryConfig] = useState<IndustryModulesConfig>({
+    industry: 'general',
+    enableMhraCompliance: false,
+    enableFcaCompliance: false,
+    enableOfqualCompliance: false,
+    enableCreativeSignoffs: false,
+    enableGiftAid: false,
+    updatedAt: new Date().toISOString(),
+    configuredBy: currentProfile?.name || 'IT Administrator'
+  });
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadIndustryConfig() {
+      try {
+        const setting = await db.settings.get('biscuit_industry_modules');
+        if (setting?.value) {
+          setIndustryConfig(setting.value as IndustryModulesConfig);
+        }
+      } catch (err) {
+        console.error('Failed to load industry config:', err);
+      }
+    }
+    loadIndustryConfig();
+  }, []);
   const [tickets, setTickets] = useState<ITTicket[]>([]);
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -331,6 +358,12 @@ export default function ITHelpdesk({ currentProfile, onAwardXP }: ITHelpdeskProp
               className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${activeTab === 'audits' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
             >
               <BarChart3 className="w-3.5 h-3.5" /> Multi-Horizon Audits
+            </button>
+            <button
+              onClick={() => setActiveTab('governance')}
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${activeTab === 'governance' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" /> Statutory Governance
             </button>
           </div>
 
