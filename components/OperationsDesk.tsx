@@ -48,54 +48,7 @@ export default function OperationsDesk({
   onAwardXp?: (amount: number, reason: string) => void;
   onDispatchOrder?: (orderId: string) => void;
 }) {
-  const DEFAULT_DISPATCH_ORDERS: DispatchOrder[] = [
-    {
-      id: "DSP-1001",
-      orderNumber: "ORD-9481",
-      customer: "Acme Technologies",
-      destination: "Leeds Depot, West Yorkshire (LS1 4DY)",
-      weightKg: 42.5,
-      carrier: "DPD Express",
-      trackingCode: "DPD-9948102-GB",
-      status: "Ready for Picking",
-      items: [
-        {
-          id: "ITM-101",
-          name: "Export Shipping Cartons (Grade A)",
-          quantity: 15,
-          location: "Aisle 3 - Bay B - Shelf 2",
-          status: "Reserved"
-        },
-        {
-          id: "ITM-102",
-          name: "Reinforced Strapping Bands",
-          quantity: 10,
-          location: "Aisle 1 - Bay C - Shelf 4",
-          status: "Reserved"
-        }
-      ]
-    },
-    {
-      id: "DSP-1002",
-      orderNumber: "ORD-9482",
-      customer: "Starlight Media",
-      destination: "London Hub, Shoreditch (EC2A 1NT)",
-      weightKg: 28.0,
-      carrier: "Royal Mail 24",
-      trackingCode: "RM-2094811-GB",
-      status: "Packaged",
-      shippingCost: 14.50,
-      items: [
-        {
-          id: "ITM-201",
-          name: "Heavy Duty Crates (Weatherproof)",
-          quantity: 15,
-          location: "Aisle 2 - Bay A - Shelf 1",
-          status: "Picked"
-        }
-      ]
-    }
-  ];
+  const DEFAULT_DISPATCH_ORDERS: DispatchOrder[] = [];
 
   const [orders, setOrders] = useState<DispatchOrder[]>(() => {
     if (typeof window !== "undefined") {

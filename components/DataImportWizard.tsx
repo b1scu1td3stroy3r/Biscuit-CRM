@@ -53,9 +53,9 @@ export default function DataImportWizard({ onImportComplete, currentUser }: Data
     if (activeTrack === 'contacts') {
       const sampleCSV = 
 `Contact Name,Company,Email,Phone,Pipeline Stage,CRN,Deal Value,Account Manager,Billing Address
-"Alice Smith","Acme Technologies","alice@company.co.uk","+44 20 7946 0111","Sales","12345678","5000","${currentUser}","100 High Street, London"
+"Jane Doe","Example Enterprise Ltd","billing@example.com","+44 20 7000 0000","Executive","10000001","0","${currentUser}","1 Business Way, London"
 "Primary Contact","Client Enterprise","contact@client-enterprise.co.uk","+44 20 7946 0222","Lead","87654321","3200","${currentUser}","42 Park Lane, Manchester"
-"Claire Watson","Vanguard Retail","claire@vanguard.org","+44 20 7946 0333","Prospect","","12000","${currentUser}","12 Commercial Rd, Leeds"`;
+"Operations Team","Client Corporation","ops@clientcorp.co.uk","+44 161 000 0000","Operations","","0","${currentUser}","2 Central Plaza, Manchester"`;
       
       const blob = new Blob([sampleCSV], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
