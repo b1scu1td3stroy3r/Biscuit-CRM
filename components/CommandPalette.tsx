@@ -166,7 +166,7 @@ export default function CommandPalette({
           <Search className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
           <input
             type="text"
-            placeholder="Search John Doe, Revolut, CRN, or jump to actions..."
+            placeholder="Search Contact Name, Revolut, CRN, or jump to actions..."
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);

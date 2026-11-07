@@ -18,7 +18,7 @@ export default function DataImportWizard({ onImportComplete, currentUser }: Data
     let headers = "";
     let fname = "";
     if (type === 'contacts') {
-      headers = "First Name,Company Name,Email Address,Phone Number,Deal Stage,Deal Value,Owner\nJohn,Client Account Ltd,contact@company.co.uk,07123456789,Lead,5000,Terence White\n";
+      headers = "First Name,Company Name,Email Address,Phone Number,Deal Stage,Deal Value,Owner\nJohn,Registered Company Ltd,contact@company.co.uk,07123456789,Lead,5000,Terence White\n";
       fname = "biscuit_crm_contacts_template.csv";
     } else if (type === 'inventory') {
       headers = "SKU,Item Name,Category,OnHand,Reserved,Available,UnitCost,BinLocation\nSKU-001,Premium Widget,Hardware,100,10,90,12.50,A-01\n";

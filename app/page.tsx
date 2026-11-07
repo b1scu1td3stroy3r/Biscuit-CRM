@@ -2066,7 +2066,7 @@ export default function Dashboard() {
                   <label className="text-xs font-semibold text-slate-400 block mb-1">Company / Organization Name</label>
                   <input
                     type="text"
-                    placeholder="e.g. Client Account Ltd"
+                    placeholder="e.g. Client Account"
                     value={newContact.company}
                     onChange={(e) => setNewContact(prev => ({ ...prev, company: e.target.value }))}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"

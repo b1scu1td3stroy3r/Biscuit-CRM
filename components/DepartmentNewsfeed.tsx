@@ -40,7 +40,7 @@ export default function DepartmentNewsfeed({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const cleanupOldItemsAndLoad = async () => {
-    // 1. One-time clean of legacy dummy seed records
+    // 1. One-time clean of legacy broadcastItem seed records
     try {
       const all = await db.newsFeed.toArray();
       for (const item of all) {
