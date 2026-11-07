@@ -1,3 +1,4 @@
+// Jira Service Management ITIL CMDB Fixed Asset Linking Enabled
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
