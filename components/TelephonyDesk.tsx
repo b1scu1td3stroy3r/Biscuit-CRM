@@ -266,12 +266,7 @@ export default function TelephonyDesk({
             </select>
           </div>
 
-          <button
-            onClick={handleSimulateInboundCall}
-            className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition"
-          >
-            <PhoneIncoming className="w-3.5 h-3.5 text-emerald-400" /> Simulate Inbound Screen-Pop
-          </button>
+          
         </div>
       </div>
 
