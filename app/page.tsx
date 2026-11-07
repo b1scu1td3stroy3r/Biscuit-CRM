@@ -130,6 +130,7 @@ const DEPARTMENT_CONFIG: Record<DepartmentRole, { label: string; icon: any; colo
 const PIPELINE_STAGES = [
   { key: 'Prospect', label: '0. Cold Prospects', desc: 'Target list for cold calling (never bought)', color: 'border-slate-500/40 text-slate-300 bg-slate-500/10' },
   { key: 'Lead', label: '1. Hot Leads', desc: 'Inbound inquiries or warmed prospects ready for proposal', color: 'border-amber-500/40 text-amber-400 bg-amber-500/10' },
+    { key: 'Callback', label: '1.5. Callback', desc: 'Scheduled follow-up & telephone callbacks', color: 'border-amber-500/40 text-amber-400 bg-amber-500/10' },
   { key: 'Sales', label: '2. Active Sales (Closed Deals)', desc: 'Converted deals alerted to Operations for picking & packaging', color: 'border-sky-500/40 text-sky-400 bg-sky-500/10' },
   { key: 'Logistics', label: '3. Logistics', desc: 'Dispatch SLA & delivery fulfillment', color: 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10' },
   { key: 'Customer Service', label: '4. Retention / CS', desc: 'Onboarding follow-up & active support', color: 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' },
@@ -800,13 +801,14 @@ export default function Dashboard() {
     }
   };
 
-  const selectCompany = (item: any) => {
-    setNewContact({
-      ...newContact,
+    const selectCompany = (item: any) => {
+    setNewContact(prev => ({
+      ...prev,
       company: item.title,
       crn: item.company_number,
       billingAddress: item.address_snippet || '',
-    });
+    
+    }));
     setSearchResults([]);
   };
 
@@ -936,7 +938,8 @@ export default function Dashboard() {
     const assignedAcc = newContact.accountNumber || `ACC-${Math.floor(10000 + Math.random() * 90000)}`;
 
     const newId = await db.contacts.add({
-      ...newContact,
+        ...(newContact as any),
+      
       accountNumber: assignedAcc,
       synced: false,
       updatedAt: new Date().toISOString(),
@@ -945,7 +948,7 @@ export default function Dashboard() {
     await db.outbox.add({
       type: 'INSERT',
       table: 'contacts',
-      payload: { ...newContact, accountNumber: assignedAcc },
+      payload: {  accountNumber: assignedAcc },
       timestamp: Date.now(),
     });
 
@@ -1022,7 +1025,7 @@ export default function Dashboard() {
             )}
           </div>
           <div className="flex items-center gap-1.5 text-xs text-slate-400">
-            <span>Sole Trader Mode{showEmail ? ` (Personal Google Account: ${currentProfile?.email || 'user@corporate-domain.com'})` : ''}</span>
+            <span>{currentProfile?.email || "admin@internal.local"}</span>
             <button 
               type="button"
               onClick={() => setShowEmail(!showEmail)} 
@@ -1979,7 +1982,7 @@ export default function Dashboard() {
                   <label className="text-xs font-semibold text-slate-400 block mb-1">Target Funnel Stage</label>
                   <select
                     value={newContact.stage}
-                    onChange={(e) => setNewContact({ ...newContact, stage: e.target.value as any })}
+                    onChange={(e) => setNewContact(prev => ({ ...prev, stage: e.target.value as any }))}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-400"
                   >
                     {currentPipelineStages.map(s => (
@@ -1992,7 +1995,7 @@ export default function Dashboard() {
                   <input
                     type="text"
                     value={newContact.accountNumber}
-                    onChange={(e) => setNewContact({ ...newContact, accountNumber: e.target.value })}
+                    onChange={(e) => setNewContact(prev => ({ ...prev, accountNumber: e.target.value }))}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-emerald-400 font-semibold"
                     required
                   />
@@ -2006,7 +2009,7 @@ export default function Dashboard() {
                     type="text"
                     placeholder="e.g. Client Account Ltd"
                     value={newContact.company}
-                    onChange={(e) => setNewContact({ ...newContact, company: e.target.value })}
+                    onChange={(e) => setNewContact(prev => ({ ...prev, company: e.target.value }))}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
                     required
                   />
@@ -2017,7 +2020,7 @@ export default function Dashboard() {
                     type="text"
                     placeholder="e.g. David Clarke"
                     value={newContact.name}
-                    onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
+                    onChange={(e) => setNewContact(prev => ({ ...prev, name: e.target.value }))}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
                     required
                   />
@@ -2031,7 +2034,7 @@ export default function Dashboard() {
                     type="email"
                     placeholder="client@company.co.uk"
                     value={newContact.email}
-                    onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
+                    onChange={(e) => setNewContact(prev => ({ ...prev, email: e.target.value }))}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100"
                     required
                   />
@@ -2042,7 +2045,7 @@ export default function Dashboard() {
                     type="text"
                     placeholder="+44 20 7946 0912"
                     value={newContact.phone}
-                    onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
+                    onChange={(e) => setNewContact(prev => ({ ...prev, phone: e.target.value }))}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-slate-100"
                   />
                 </div>
@@ -2055,7 +2058,7 @@ export default function Dashboard() {
                     type="text"
                     placeholder="e.g. 12849501"
                     value={newContact.crn}
-                    onChange={(e) => setNewContact({ ...newContact, crn: e.target.value })}
+                    onChange={(e) => setNewContact(prev => ({ ...prev, crn: e.target.value }))}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-200"
                   />
                 </div>
@@ -2065,7 +2068,7 @@ export default function Dashboard() {
                     type="number"
                     placeholder="5000"
                     value={newContact.dealValue || ''}
-                    onChange={(e) => setNewContact({ ...newContact, dealValue: Number(e.target.value) })}
+                    onChange={(e) => setNewContact(prev => ({ ...prev, dealValue: Number(e.target.value) }))}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-emerald-400"
                   />
                 </div>
@@ -2077,7 +2080,7 @@ export default function Dashboard() {
                   rows={2}
                   placeholder="e.g. 100 High Street, London, EC1A 1BB"
                   value={newContact.billingAddress}
-                  onChange={(e) => setNewContact({ ...newContact, billingAddress: e.target.value })}
+                  onChange={(e) => setNewContact(prev => ({ ...prev, billingAddress: e.target.value }))}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-100"
                 />
               </div>
@@ -2295,6 +2298,7 @@ export default function Dashboard() {
       })()}
 
       <HealthWizard
+        currentUserRole={currentProfile?.role || 'Managing Director'}
         isOpen={isHealthOpen}
         onClose={() => setIsHealthOpen(false)}
         folderId={folderId}

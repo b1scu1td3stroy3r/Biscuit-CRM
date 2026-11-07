@@ -8,9 +8,10 @@ interface HealthWizardProps {
   isOpen: boolean;
   onClose: () => void;
   folderId: string;
+  currentUserRole?: string;
 }
 
-export default function HealthWizard({ isOpen, onClose, folderId }: HealthWizardProps) {
+export default function HealthWizard({ isOpen, onClose, folderId, currentUserRole }: HealthWizardProps) {
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<{
     indexedDb: boolean;
@@ -76,7 +77,11 @@ export default function HealthWizard({ isOpen, onClose, folderId }: HealthWizard
               <HardDrive className="w-4 h-4 text-amber-400" />
               <div>
                 <div className="text-xs font-semibold text-slate-200">Google Drive Ledger Folder</div>
-                <div className="text-[10px] text-slate-400 font-mono">{folderId.slice(0, 16)}...</div>
+                {(currentUserRole === 'Managing Director' || currentUserRole?.toLowerCase().includes('finance')) ? (
+                    <div className="text-[10px] text-slate-400 font-mono">{folderId.slice(0, 16)}...</div>
+                  ) : (
+                    <div className="text-[10px] text-slate-500 italic">Access Restricted (Finance / MD Only)</div>
+                  )}
               </div>
             </div>
             {results.driveConfig ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <XCircle className="w-4 h-4 text-rose-400" />}

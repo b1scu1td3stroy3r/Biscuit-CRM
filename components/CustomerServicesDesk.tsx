@@ -272,6 +272,15 @@ export default function CustomerServicesDesk({
 
         {/* Customer Services Target & SLA Performance Ribbon */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-xs">
+          {/* Operational SLA: Avg Call Wait Time */}
+          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+            <div className="flex items-center justify-between text-slate-400 text-xs">
+              <span>Avg Call Wait Time</span>
+              <Clock className="w-4 h-4 text-amber-400" />
+            </div>
+            <div className="text-xl font-bold font-mono text-white">22s</div>
+            <div className="text-[10px] text-emerald-400 font-medium">Telecom SLA: &lt; 30s Target</div>
+          </div>
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-teal-500/20 text-teal-400 flex items-center justify-center font-bold">
               <Timer className="w-4 h-4" />
