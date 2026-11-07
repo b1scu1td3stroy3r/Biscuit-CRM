@@ -57,6 +57,7 @@ import EnterpriseFleetHubModal from '../components/EnterpriseFleetHubModal';
 import HMRCComplianceBridgeModal from '../components/HMRCComplianceBridgeModal';
 import EnterpriseSSOModal from '../components/EnterpriseSSOModal';
 import SecurityThreatAuditModal from '../components/SecurityThreatAuditModal';
+import EnterpriseCompliancePackModal from '../components/EnterpriseCompliancePackModal';
 import SAPBOMDesk from '../components/SAPBOMDesk';
 import WorkdayHeadcountDesk from '../components/WorkdayHeadcountDesk';
 import IndustrySetupWizardModal from '../components/IndustrySetupWizardModal';
@@ -247,6 +248,7 @@ export default function Dashboard() {
   const [showHMRCModal, setShowHMRCModal] = useState(false);
   const [showSSOModal, setShowSSOModal] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [showComplianceModal, setShowComplianceModal] = useState(false);
 
 
 
@@ -2375,6 +2377,7 @@ export default function Dashboard() {
       <HMRCComplianceBridgeModal isOpen={showHMRCModal} onClose={() => setShowHMRCModal(false)} />
       <EnterpriseSSOModal isOpen={showSSOModal} onClose={() => setShowSSOModal(false)} />
       <SecurityThreatAuditModal isOpen={showSecurityModal} onClose={() => setShowSecurityModal(false)} />
+      <EnterpriseCompliancePackModal isOpen={showComplianceModal} onClose={() => setShowComplianceModal(false)} />
 
     </main>
   );

@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  biscuit-relay:
+    image: node:20-alpine
+    container_name: biscuit-lan-relay
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./server.js:/app/server.js:ro
+    command: sh -c "npm install ws && node server.js"
+    ports:
+      - "8080:8080"
+    environment:
+      - RELAY_PORT=8080
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Optional on-premise Coturn TURN relay for strict corporate DPI firewalls
+  biscuit-coturn:
+    image: coturn/coturn:latest
+    container_name: biscuit-coturn-relay
+    restart: unless-stopped
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+    command:
+      - "-n"
+      - "--log-file=stdout"
+      - "--lt-cred-mech"
+      - "--fingerprint"
+      - "--realm=biscuit.internal"
+      - "--user=corp-user:secret-token-99"
