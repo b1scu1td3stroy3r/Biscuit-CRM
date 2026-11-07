@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Package, Search, X, CheckCircle, AlertTriangle, Layers, ArrowUpRight, Upload, Plus } from "lucide-react";
 import { db, InventoryItem } from "../packages/storage/src/db";
 
-export default function LiveStockHUDModal({
+export default function LiveStockHUDModal({ currentUserRole,
   isOpen,
   onClose,
   currentUser,
@@ -15,6 +15,7 @@ export default function LiveStockHUDModal({
   onClose: () => void;
   currentUser?: any;
   currentDepartment?: string;
+  currentUserRole?: string;
 }) {
     const userRoleStr = typeof currentUser === 'string'
     ? currentUser
