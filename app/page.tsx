@@ -1084,7 +1084,7 @@ export default function Dashboard() {
             )}
           </div>
           <div className="flex items-center gap-1.5 text-xs text-slate-400">
-            <span>{currentProfile?.email || "admin@internal.local"}</span>
+            <span>{currentProfile?.email || ""}</span>
             <button 
               type="button"
               onClick={() => setShowEmail(!showEmail)} 
