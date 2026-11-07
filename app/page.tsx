@@ -47,6 +47,7 @@ import EmployeeHub, { computeProgression } from '../components/EmployeeHub';
 import FinanceDesk from '../components/FinanceDesk';
 import ProjectBoard from '../components/ProjectBoard';
 import MarketingCampaignDesk from '../components/MarketingCampaignDesk';
+import EnterpriseFinanceOperationsDesk from '../components/EnterpriseFinanceOperationsDesk';
 import IndustrySetupWizardModal from '../components/IndustrySetupWizardModal';
 import CPQModal from '../components/CPQModal';
 import OpenBankingSyncModal from '../components/OpenBankingSyncModal';

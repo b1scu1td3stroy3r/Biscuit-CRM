@@ -1,4 +1,34 @@
 
+export interface FixedAssetRecord {
+  id: string;
+  name: string;
+  category: 'Equipment' | 'Vehicles' | 'Computers & IT' | 'Leasehold' | 'Fixtures & Fittings';
+  purchaseDate: string;
+  costBasis: number;
+  salvageValue: number;
+  usefulLifeYears: number;
+  method: 'Straight Line' | 'Reducing Balance';
+  accumulatedDepreciation: number;
+  currentBookValue: number;
+  lastDepreciationDate?: string;
+}
+
+export interface ThreeWayMatchRecord {
+  id: string;
+  purchaseOrderId: string;
+  goodsReceiptId: string;
+  billId: string;
+  supplierName: string;
+  poAmount: number;
+  grnAmount: number;
+  billAmount: number;
+  variancePct: number;
+  status: 'Matched' | 'Tolerance Exception' | 'Quantity Mismatch' | 'Price Mismatch';
+  approved: boolean;
+  matchedAt: string;
+}
+
+
 export interface ProjectRecord {
   id: string;
   name: string;
@@ -457,6 +487,22 @@ export class BiscuitDB extends Dexie {
       callLogs: '++id, contactId, phoneNumber, callerName, timestamp',
       whiteboardNotes: '++id, author, department, createdAt',
       settings: 'key, updatedAt'
+    });
+    this.version(5).stores({
+      contacts: '++id, accountNumber, email, stage, synced, updatedAt, ownerId',
+      projects: '++id, title, companyName, startDate, endDate',
+      templates: '++id, category, title',
+      auditLogs: '++id, timestamp, actor, action, synced',
+      employees: '++id, name, department, status, role, clearanceLevel, primaryManagerId',
+      outbox: '++id, type, table, timestamp',
+      newsFeed: '++id, category, department, createdAt',
+      leaveRequests: '++id, employeeName, department, status, startDate',
+      holidays: '++id, employeeName, department, status, startDate',
+      callLogs: '++id, contactId, phoneNumber, callerName, timestamp',
+      whiteboardNotes: '++id, author, department, createdAt',
+      settings: 'key, updatedAt',
+      fixedAssets: 'id, category, purchaseDate',
+      threeWayMatches: 'id, purchaseOrderId, billId, status, approved'
     });
     this.version(5).stores({
       contacts: '++id, accountNumber, email, stage, synced, updatedAt, ownerId',
