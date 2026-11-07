@@ -1,4 +1,16 @@
 
+export interface MutationDeltaRecord {
+  id: string;
+  timestamp: number;
+  nodeId: string;
+  tableName: string;
+  entityId: string;
+  operation: 'PUT' | 'DELETE';
+  payload: any;
+  applied: boolean;
+}
+
+
 export interface OrganisationRecord {
   id: string;
   name: string;
@@ -539,6 +551,21 @@ export class BiscuitDB extends Dexie {
       callLogs: '++id, contactId, phoneNumber, callerName, timestamp',
       whiteboardNotes: '++id, author, department, createdAt',
       settings: 'key, updatedAt'
+    });
+    this.version(5).stores({
+      contacts: '++id, accountNumber, email, stage, synced, updatedAt, ownerId',
+      projects: '++id, title, companyName, startDate, endDate',
+      templates: '++id, category, title',
+      auditLogs: '++id, timestamp, actor, action, synced',
+      employees: '++id, name, department, status, role, clearanceLevel, primaryManagerId',
+      outbox: '++id, type, table, timestamp',
+      newsFeed: '++id, category, department, createdAt',
+      leaveRequests: '++id, employeeName, department, status, startDate',
+      holidays: '++id, employeeName, department, status, startDate',
+      callLogs: '++id, contactId, phoneNumber, callerName, timestamp',
+      whiteboardNotes: '++id, author, department, createdAt',
+      settings: 'key, updatedAt',
+      mutationLog: 'id, timestamp, nodeId, tableName, entityId'
     });
     this.version(5).stores({
       contacts: '++id, accountNumber, email, stage, synced, updatedAt, ownerId',

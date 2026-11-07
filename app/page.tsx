@@ -53,6 +53,7 @@ import MultiEntityConsolidationDesk from '../components/MultiEntityConsolidation
 import AutoSnapshotEngine from '../components/AutoSnapshotEngine';
 import UniversalCSVOnboardingModal from '../components/UniversalCSVOnboardingModal';
 import SyncDiagnosticsModal from '../components/SyncDiagnosticsModal';
+import EnterpriseFleetHubModal from '../components/EnterpriseFleetHubModal';
 import SAPBOMDesk from '../components/SAPBOMDesk';
 import WorkdayHeadcountDesk from '../components/WorkdayHeadcountDesk';
 import IndustrySetupWizardModal from '../components/IndustrySetupWizardModal';
@@ -239,6 +240,7 @@ export default function Dashboard() {
   const [showCryptoSignModal, setShowCryptoSignModal] = useState(false);
   const [showCSVModal, setShowCSVModal] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
+  const [showFleetModal, setShowFleetModal] = useState(false);
 
 
   const handleQualifyMarketingLead = async (leadData: { name: string; company: string; email: string; phone?: string; dealValue?: number }) => {
@@ -2362,6 +2364,7 @@ export default function Dashboard() {
           <CryptoSignatureModal isOpen={showCryptoSignModal} onClose={() => setShowCryptoSignModal(false)} />
           <UniversalCSVOnboardingModal isOpen={showCSVModal} onClose={() => setShowCSVModal(false)} />
       <SyncDiagnosticsModal isOpen={showSyncModal} onClose={() => setShowSyncModal(false)} />
+      <EnterpriseFleetHubModal isOpen={showFleetModal} onClose={() => setShowFleetModal(false)} />
     </main>
   );
 }
