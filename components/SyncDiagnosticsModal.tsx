@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Network, CheckCircle2, AlertTriangle, RefreshCw, X, Shield, QrCode } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Network, CheckCircle2, AlertTriangle, RefreshCw, X, Shield, Key, Server } from 'lucide-react';
 
 interface SyncDiagnosticsModalProps {
   isOpen: boolean;
@@ -12,8 +12,34 @@ export default function SyncDiagnosticsModal({ isOpen, onClose }: SyncDiagnostic
   if (!isOpen) return null;
 
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success'>('idle');
-  const [peerOffer, setPeerOffer] = useState('');
+  const [turnServer, setTurnServer] = useState('');
+  const [turnUsername, setTurnUsername] = useState('');
+  const [turnCredential, setTurnCredential] = useState('');
   const [peerAnswer, setPeerAnswer] = useState('');
+  const [isSaved, setIsSaved] = useState(false);
+
+  useEffect(() => {
+    const savedTurn = localStorage.getItem('biscuit_turn_config');
+    if (savedTurn) {
+      try {
+        const parsed = JSON.parse(savedTurn);
+        setTurnServer(parsed.server || '');
+        setTurnUsername(parsed.username || '');
+        setTurnCredential(parsed.credential || '');
+      } catch {}
+    }
+  }, []);
+
+  const saveTurnConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    localStorage.setItem('biscuit_turn_config', JSON.stringify({
+      server: turnServer.trim(),
+      username: turnUsername.trim(),
+      credential: turnCredential.trim()
+    }));
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2000);
+  };
 
   const runConnectivityTest = () => {
     setTestStatus('testing');
@@ -31,8 +57,8 @@ export default function SyncDiagnosticsModal({ isOpen, onClose }: SyncDiagnostic
               <Network className="w-5 h-5" />
             </span>
             <div>
-              <h2 className="text-sm font-bold text-white">Zero-Knowledge P2P Sync Mesh</h2>
-              <p className="text-[11px] text-slate-400 font-mono">Encrypted WebRTC DataChannel (No Central Relay)</p>
+              <h2 className="text-sm font-bold text-white">P2P Sync Mesh & Enterprise Firewall Traversal</h2>
+              <p className="text-[11px] text-slate-400 font-mono">Encrypted WebRTC + Dedicated TURN Relay</p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-200">
@@ -51,6 +77,7 @@ export default function SyncDiagnosticsModal({ isOpen, onClose }: SyncDiagnostic
           </div>
         </div>
 
+        {/* Diagnostic Status Box */}
         <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-white">Browser WebRTC Subsystem</span>
@@ -74,14 +101,64 @@ export default function SyncDiagnosticsModal({ isOpen, onClose }: SyncDiagnostic
               <span className="text-emerald-400">Active</span>
             </div>
             <div className="flex justify-between">
-              <span>STUN Configuration:</span>
+              <span>Primary STUN:</span>
               <span className="text-slate-300">stun:stun.l.google.com:19302</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Corporate TURN Relay:</span>
+              <span className={turnServer ? 'text-emerald-400 font-bold' : 'text-amber-400'}>
+                {turnServer ? 'Configured (Active)' : 'Default LAN Only'}
+              </span>
             </div>
           </div>
         </div>
 
+        {/* Corporate TURN Relay Configuration Form */}
+        <form onSubmit={saveTurnConfig} className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200">
+              <Server className="w-3.5 h-3.5 text-purple-400" />
+              <span>Dedicated TURN Relay (Bypasses Deep-Packet Inspection)</span>
+            </div>
+            {isSaved && <span className="text-[10px] text-emerald-400 font-bold">Saved!</span>}
+          </div>
+          <div className="space-y-2">
+            <input
+              type="text"
+              placeholder="turn:turn.yourcompany.com:3478 (or Cloudflare Calls / Twilio)"
+              value={turnServer}
+              onChange={(e) => setTurnServer(e.target.value)}
+              className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-200 font-mono focus:outline-none"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="text"
+                placeholder="TURN Username"
+                value={turnUsername}
+                onChange={(e) => setTurnUsername(e.target.value)}
+                className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-200 font-mono focus:outline-none"
+              />
+              <input
+                type="password"
+                placeholder="TURN Credential / Token"
+                value={turnCredential}
+                onChange={(e) => setTurnCredential(e.target.value)}
+                className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-200 font-mono focus:outline-none"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold"
+            >
+              Update Traversal Relay
+            </button>
+          </div>
+        </form>
+
         <div className="space-y-2">
-          <label className="text-xs text-slate-400 block">Manual Device Pairing Code (Air-Gapped Sync)</label>
+          <label className="text-xs text-slate-400 block">Manual Device Pairing Code (Air-Gapped Handshake)</label>
           <input
             type="text"
             placeholder="Paste partner device handshake code..."

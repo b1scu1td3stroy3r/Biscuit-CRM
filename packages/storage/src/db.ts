@@ -1,4 +1,36 @@
 
+export interface OrganisationRecord {
+  id: string;
+  name: string;
+  currency: string;
+  country: string;
+  isParent: boolean;
+  registrationNumber?: string;
+  intercompanyAccountCode?: string;
+}
+
+export interface IntercompanyEliminationRecord {
+  id: string;
+  date: string;
+  entityAId: string;
+  entityBId: string;
+  description: string;
+  amount: number;
+  eliminated: boolean;
+}
+
+export interface CloudBackupConfig {
+  id: string;
+  provider: 's3' | 'cloudflare_r2' | 'backblaze';
+  endpoint: string;
+  bucketName: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  autoSyncMinutes: number;
+  lastSyncedAt?: string;
+}
+
+
 export interface BillOfMaterialRecord {
   id: string;
   parentSku: string;
@@ -507,6 +539,23 @@ export class BiscuitDB extends Dexie {
       callLogs: '++id, contactId, phoneNumber, callerName, timestamp',
       whiteboardNotes: '++id, author, department, createdAt',
       settings: 'key, updatedAt'
+    });
+    this.version(5).stores({
+      contacts: '++id, accountNumber, email, stage, synced, updatedAt, ownerId',
+      projects: '++id, title, companyName, startDate, endDate',
+      templates: '++id, category, title',
+      auditLogs: '++id, timestamp, actor, action, synced',
+      employees: '++id, name, department, status, role, clearanceLevel, primaryManagerId',
+      outbox: '++id, type, table, timestamp',
+      newsFeed: '++id, category, department, createdAt',
+      leaveRequests: '++id, employeeName, department, status, startDate',
+      holidays: '++id, employeeName, department, status, startDate',
+      callLogs: '++id, contactId, phoneNumber, callerName, timestamp',
+      whiteboardNotes: '++id, author, department, createdAt',
+      settings: 'key, updatedAt',
+      organisations: 'id, name, isParent',
+      intercompanyEliminations: 'id, date, entityAId, entityBId, eliminated',
+      cloudBackupConfig: 'id, provider'
     });
     this.version(5).stores({
       contacts: '++id, accountNumber, email, stage, synced, updatedAt, ownerId',

@@ -49,6 +49,7 @@ import ProjectBoard from '../components/ProjectBoard';
 import MarketingCampaignDesk from '../components/MarketingCampaignDesk';
 import EnterpriseFinanceOperationsDesk from '../components/EnterpriseFinanceOperationsDesk';
 import CryptoSignatureModal from '../components/CryptoSignatureModal';
+import MultiEntityConsolidationDesk from '../components/MultiEntityConsolidationDesk';
 import AutoSnapshotEngine from '../components/AutoSnapshotEngine';
 import UniversalCSVOnboardingModal from '../components/UniversalCSVOnboardingModal';
 import SyncDiagnosticsModal from '../components/SyncDiagnosticsModal';
