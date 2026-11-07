@@ -1,4 +1,24 @@
 
+export interface BillOfMaterialRecord {
+  id: string;
+  parentSku: string;
+  componentSku: string;
+  quantityRequired: number;
+  leadTimeDays: number;
+}
+
+export interface CryptographicSignedDoc {
+  id: string;
+  documentTitle: string;
+  signerName: string;
+  signerEmail: string;
+  sha256Hash: string;
+  signatureDataUrl: string;
+  timestamp: string;
+  status: 'Legally Sealed' | 'Pending';
+}
+
+
 export interface FixedAssetRecord {
   id: string;
   name: string;
@@ -487,6 +507,23 @@ export class BiscuitDB extends Dexie {
       callLogs: '++id, contactId, phoneNumber, callerName, timestamp',
       whiteboardNotes: '++id, author, department, createdAt',
       settings: 'key, updatedAt'
+    });
+    this.version(5).stores({
+      contacts: '++id, accountNumber, email, stage, synced, updatedAt, ownerId',
+      projects: '++id, title, companyName, startDate, endDate',
+      templates: '++id, category, title',
+      auditLogs: '++id, timestamp, actor, action, synced',
+      employees: '++id, name, department, status, role, clearanceLevel, primaryManagerId',
+      outbox: '++id, type, table, timestamp',
+      newsFeed: '++id, category, department, createdAt',
+      leaveRequests: '++id, employeeName, department, status, startDate',
+      holidays: '++id, employeeName, department, status, startDate',
+      callLogs: '++id, contactId, phoneNumber, callerName, timestamp',
+      whiteboardNotes: '++id, author, department, createdAt',
+      settings: 'key, updatedAt',
+      billOfMaterials: 'id, parentSku, componentSku',
+      signedContracts: 'id, documentTitle, signerEmail, sha256Hash',
+      itcmdbLinks: 'id, assetId, ticketId'
     });
     this.version(5).stores({
       contacts: '++id, accountNumber, email, stage, synced, updatedAt, ownerId',

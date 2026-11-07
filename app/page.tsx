@@ -48,6 +48,9 @@ import FinanceDesk from '../components/FinanceDesk';
 import ProjectBoard from '../components/ProjectBoard';
 import MarketingCampaignDesk from '../components/MarketingCampaignDesk';
 import EnterpriseFinanceOperationsDesk from '../components/EnterpriseFinanceOperationsDesk';
+import CryptoSignatureModal from '../components/CryptoSignatureModal';
+import SAPBOMDesk from '../components/SAPBOMDesk';
+import WorkdayHeadcountDesk from '../components/WorkdayHeadcountDesk';
 import IndustrySetupWizardModal from '../components/IndustrySetupWizardModal';
 import CPQModal from '../components/CPQModal';
 import OpenBankingSyncModal from '../components/OpenBankingSyncModal';
@@ -229,6 +232,7 @@ export default function Dashboard() {
   const [showOpenBankingModal, setShowOpenBankingModal] = useState(false);
   const [showAuditDrawer, setShowAuditDrawer] = useState(false);
   const [showAICopilotDrawer, setShowAICopilotDrawer] = useState(false);
+  const [showCryptoSignModal, setShowCryptoSignModal] = useState(false);
 
   const handleQualifyMarketingLead = async (leadData: { name: string; company: string; email: string; phone?: string; dealValue?: number }) => {
     const assignedAcc = `ACC-${Math.floor(10000 + Math.random() * 90000)}`;
@@ -2348,6 +2352,7 @@ export default function Dashboard() {
       <TimeMachineAuditDrawer isOpen={showAuditDrawer} onClose={() => setShowAuditDrawer(false)} />
       <BiscuitAICopilotDrawer isOpen={showAICopilotDrawer} onClose={() => setShowAICopilotDrawer(false)} />
 
+          <CryptoSignatureModal isOpen={showCryptoSignModal} onClose={() => setShowCryptoSignModal(false)} />
     </main>
   );
 }
