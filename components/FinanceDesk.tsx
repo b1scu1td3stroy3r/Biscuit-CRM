@@ -105,6 +105,130 @@ export default function FinanceDesk({
     loadSavedBank();
   }, []);
 
+  
+  // --- Quickbooks Parity: AR Aging & Client-Side Vector PDF Invoice Engine ---
+  const [arAgingFilter, setArAgingFilter] = useState<'all' | 'current' | '30' | '60' | '90'>('all');
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+
+  // Dynamic AR Aging Calculator from Contacts / Ledger
+  const arAgingSummary = useMemo(() => {
+    let current = 0;
+    let days30 = 0;
+    let days60 = 0;
+    let days90Plus = 0;
+
+    (contacts || []).forEach((c: any) => {
+      const val = Number(c.dealValue) || 0;
+      if (c.stage === 'Closed Won' || c.stage === 'Invoice Sent' || c.stage === 'Invoiced') {
+        const days = Math.floor((Date.now() - new Date(c.updatedAt || Date.now()).getTime()) / (1000 * 60 * 60 * 24));
+        if (days <= 30) current += val;
+        else if (days <= 60) days30 += val;
+        else if (days <= 90) days60 += val;
+        else days90Plus += val;
+      }
+    });
+
+    return {
+      current,
+      days30,
+      days60,
+      days90Plus,
+      totalReceivables: current + days30 + days60 + days90Plus
+    };
+  }, [contacts]);
+
+  // Client-Side Invoice Generator (Zero-Server Vector Print/PDF)
+  const handlePrintInvoice = (inv: any) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    const invNum = inv.accountNumber || `INV-${Math.floor(100000 + Math.random() * 900000)}`;
+    const total = Number(inv.dealValue) || 0;
+    const vat = total * 0.20;
+    const gross = total + vat;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Invoice - ${invNum}</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 40px; color: #0f172a; }
+            .header { display: flex; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; }
+            .badge { background: #0284c7; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; }
+            .details { margin: 30px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { background: #f8fafc; text-align: left; padding: 10px; border-bottom: 1px solid #cbd5e1; font-size: 13px; }
+            td { padding: 12px 10px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
+            .total-box { margin-top: 30px; text-align: right; }
+            .total-row { font-size: 14px; margin-bottom: 5px; }
+            .grand-total { font-size: 18px; font-weight: bold; color: #0284c7; }
+            .bank-box { margin-top: 40px; padding: 15px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <h1 style="margin: 0; font-size: 24px;">TAX INVOICE</h1>
+              <p style="margin: 5px 0 0; color: #64748b; font-size: 13px;">Biscuit Zero-Knowledge CRM</p>
+            </div>
+            <div style="text-align: right;">
+              <span class="badge">OFFICIAL INVOICE</span>
+              <p style="margin: 8px 0 0; font-weight: bold;">${invNum}</p>
+              <p style="margin: 2px 0 0; color: #64748b; font-size: 12px;">Date: ${new Date().toLocaleDateString('en-GB')}</p>
+            </div>
+          </div>
+          <div class="details">
+            <div>
+              <h4 style="margin: 0 0 5px; font-size: 11px; text-transform: uppercase; color: #64748b;">Billed To:</h4>
+              <p style="margin: 0; font-weight: bold;">${inv.company || inv.name || 'Valued Client'}</p>
+              <p style="margin: 2px 0; color: #64748b;">${inv.email || ''}</p>
+              <p style="margin: 2px 0; color: #64748b;">${inv.billingAddress || 'Standard Terms (30 Days)'}</p>
+            </div>
+            <div style="text-align: right;">
+              <h4 style="margin: 0 0 5px; font-size: 11px; text-transform: uppercase; color: #64748b;">Remittance Account:</h4>
+              <p style="margin: 0; font-weight: 500;">${operatingBank.bankName || 'Corporate Operating Bank'}</p>
+              <p style="margin: 2px 0; color: #64748b; font-family: monospace;">Sort: ${operatingBank.sortCode || '00-00-00'}</p>
+              <p style="margin: 2px 0; color: #64748b; font-family: monospace;">Acc: ${operatingBank.accountNumber || '00000000'}</p>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Item Description</th>
+                <th style="text-align: right;">Qty</th>
+                <th style="text-align: right;">Unit Net</th>
+                <th style="text-align: right;">VAT Rate</th>
+                <th style="text-align: right;">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Enterprise Professional Deliverables / Contract Execution</td>
+                <td style="text-align: right;">1</td>
+                <td style="text-align: right;">£${total.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td>
+                <td style="text-align: right;">20.00%</td>
+                <td style="text-align: right;">£${total.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="total-box">
+            <div class="total-row">Net Amount: £${total.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</div>
+            <div class="total-row">Standard VAT (20%): £${vat.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</div>
+            <div class="grand-total">Total Due: £${gross.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</div>
+          </div>
+          <div class="bank-box">
+            <strong style="color: #0f172a;">Settlement Details (BACS / Automated Clearing):</strong><br/>
+            Please quote invoice reference <b>${invNum}</b> on all payments. Remit funds to <b>${operatingBank.bankName || 'Company Bank'}</b>, Sort Code: <b>${operatingBank.sortCode || '00-00-00'}</b>, Account: <b>${operatingBank.accountNumber || '00000000'}</b>.
+          </div>
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   const handleSaveOperatingBank = async () => {
     if (db?.settings) {
       await db.settings.put({
@@ -898,6 +1022,55 @@ export default function FinanceDesk({
 
   return (
     <div className="space-y-6">
+                {/* QuickBooks Parity: Accounts Receivable (AR) Aging Horizon */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h4 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                <FileSpreadsheet className="w-4 h-4 text-sky-400" />
+                Accounts Receivable (AR) Aging Summary
+              </h4>
+              <p className="text-xs text-slate-400">Aging debt horizons and client-side vector invoice dispatch</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">Total Receivables:</span>
+              <span className="text-sm font-bold text-emerald-400 font-mono">
+                £{arAgingSummary.totalReceivables.toLocaleString('en-GB', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-lg">
+              <span className="text-[10px] text-slate-400 uppercase font-mono">Current (0-30 Days)</span>
+              <p className="text-base font-bold text-slate-200 font-mono mt-1">
+                £{arAgingSummary.current.toLocaleString('en-GB', { minimumFractionDigits: 2 })}
+              </p>
+              <span className="text-[10px] text-emerald-400">Within Standard Terms</span>
+            </div>
+            <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-lg">
+              <span className="text-[10px] text-slate-400 uppercase font-mono">31-60 Days Overdue</span>
+              <p className="text-base font-bold text-amber-300 font-mono mt-1">
+                £{arAgingSummary.days30.toLocaleString('en-GB', { minimumFractionDigits: 2 })}
+              </p>
+              <span className="text-[10px] text-amber-400">First Remittance Notice</span>
+            </div>
+            <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-lg">
+              <span className="text-[10px] text-slate-400 uppercase font-mono">61-90 Days Overdue</span>
+              <p className="text-base font-bold text-orange-400 font-mono mt-1">
+                £{arAgingSummary.days60.toLocaleString('en-GB', { minimumFractionDigits: 2 })}
+              </p>
+              <span className="text-[10px] text-orange-400">Credit Hold Applied</span>
+            </div>
+            <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-lg">
+              <span className="text-[10px] text-slate-400 uppercase font-mono">90+ Days (Critical)</span>
+              <p className="text-base font-bold text-rose-400 font-mono mt-1">
+                £{arAgingSummary.days90Plus.toLocaleString('en-GB', { minimumFractionDigits: 2 })}
+              </p>
+              <span className="text-[10px] text-rose-400">Escalated / Bad Debt Risk</span>
+            </div>
+          </div>
+        </div>
+
         {/* Linked Corporate Operating Bank Account */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 mb-6">
           <div className="flex items-center justify-between mb-3">
