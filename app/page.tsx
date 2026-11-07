@@ -216,6 +216,24 @@ const stageMatchesCol = (cStage: string, colId: string | number) => {
 };
 
 export default function Dashboard() {
+  const handleQualifyMarketingLead = async (leadData: { name: string; company: string; email: string; phone?: string; dealValue?: number }) => {
+    const assignedAcc = `ACC-${Math.floor(10000 + Math.random() * 90000)}`;
+    await db.contacts.add({
+      accountNumber: assignedAcc,
+      name: leadData.name,
+      company: leadData.company,
+      email: leadData.email,
+      phone: leadData.phone || '',
+      crn: '',
+      accountManager: currentProfile?.name || 'Sales Desk',
+      billingAddress: '',
+      shippingAddress: '',
+      stage: 'Lead',
+      dealValue: leadData.dealValue || 3500,
+      synced: false,
+      updatedAt: new Date().toISOString()
+    } as any);
+  };
   // Sales Order Generator State
   const [salesOrderContact, setSalesOrderContact] = useState<any | null>(null);
   const [soItems, setSoItems] = useState<{ itemId: string; name: string; quantity: number; unitPrice: number; location: string }[]>([

@@ -82,6 +82,14 @@ export default function FinanceDesk({
   currentUser,
   employees = []
 }: FinanceDeskProps) {
+
+
+  const [operatingBank, setOperatingBank] = useState({
+    bankName: '',
+    sortCode: '',
+    accountNumber: ''
+  });
+
   // Navigation & View Filters
     // Zero-Knowledge Bank Feed & Reconciliation State
   const [bankFileLoading, setBankFileLoading] = useState(false);
@@ -853,6 +861,56 @@ export default function FinanceDesk({
 
   return (
     <div className="space-y-6">
+        {/* Linked Corporate Operating Bank Account */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-emerald-400" />
+              Corporate Operating Bank Account (BACS / Direct Routing)
+            </h4>
+            {!canEditTax && (
+              <span className="text-[10px] text-amber-400 flex items-center gap-1 font-mono">
+                Finance &amp; Director View Only
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="text-[10px] text-slate-400 uppercase font-mono">Bank Name</label>
+              <input
+                type="text"
+                placeholder="e.g. Barclays Business / NatWest"
+                disabled={!canEditTax}
+                value={operatingBank.bankName}
+                onChange={e => setOperatingBank(p => ({ ...p, bankName: e.target.value }))}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 disabled:opacity-60"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-slate-400 uppercase font-mono">Sort Code</label>
+              <input
+                type="text"
+                placeholder="00-00-00"
+                disabled={!canEditTax}
+                value={operatingBank.sortCode}
+                onChange={e => setOperatingBank(p => ({ ...p, sortCode: e.target.value }))}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono disabled:opacity-60"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-slate-400 uppercase font-mono">Account Number</label>
+              <input
+                type="text"
+                placeholder="8 Digits"
+                disabled={!canEditTax}
+                value={operatingBank.accountNumber}
+                onChange={e => setOperatingBank(p => ({ ...p, accountNumber: e.target.value }))}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono disabled:opacity-60"
+              />
+            </div>
+          </div>
+        </div>
+
       {/* Top Banner & Stripe Key Bar */}
       <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-slate-950 border border-slate-800 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">

@@ -14,6 +14,28 @@ interface DataImportWizardProps {
 }
 
 export default function DataImportWizard({ onImportComplete, currentUser }: DataImportWizardProps) {
+  const downloadCSVTemplate = (type: 'contacts' | 'inventory' | 'ledger') => {
+    let headers = "";
+    let fname = "";
+    if (type === 'contacts') {
+      headers = "First Name,Company Name,Email Address,Phone Number,Deal Stage,Deal Value,Owner\nJohn,Client Account Ltd,contact@company.co.uk,07123456789,Lead,5000,Terence White\n";
+      fname = "biscuit_crm_contacts_template.csv";
+    } else if (type === 'inventory') {
+      headers = "SKU,Item Name,Category,OnHand,Reserved,Available,UnitCost,BinLocation\nSKU-001,Premium Widget,Hardware,100,10,90,12.50,A-01\n";
+      fname = "biscuit_crm_inventory_template.csv";
+    } else {
+      headers = "Transaction Date,Description,Debit,Credit,AccountCode,Reference\n2026-11-01,Supplier Payment,0.00,1200.00,2100,INV-9901\n";
+      fname = "biscuit_crm_ledger_template.csv";
+    }
+    const blob = new Blob([headers], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fname;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const [activeTrack, setActiveTrack] = useState<'contacts' | 'staff'>('contacts');
   const [fileContent, setFileContent] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
