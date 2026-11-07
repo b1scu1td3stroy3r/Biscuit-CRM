@@ -52,18 +52,13 @@ export default function MarketingCampaignDesk({ contacts = [] }: { contacts?: an
 
   const activeSeq = sequences.find(s => s.id === activeSeqId) || sequences[0];
   const activeStep = activeSeq?.steps[previewStepIndex] || activeSeq?.steps[0];
-  const testContact = contacts.find(c => c.id === testContactId) || contacts[0] || {
-    name: 'Sarah Connor',
-    company: 'Cyberdyne Systems',
-    dealValue: '45000',
-    stage: 'Lead In',
-    email: 'sarah@cyberdyne.example.com'
-  };
+  const testContact = contacts.find(c => c.id === testContactId) || contacts[0] || null;
 
   const resolvedPreview = useMemo(() => {
     if (!activeStep) return { subject: '', body: '' };
-    const firstName = (testContact.name || 'Valued Partner').split(' ')[0];
-    const company = testContact.company || 'your organisation';
+    if (!testContact) return { subject: activeStep.subject, body: activeStep.templateBody };
+    const firstName = (testContact.name || '').split(' ')[0];
+    const company = testContact.company || '';
     const dealValue = Number(testContact.dealValue || 0).toLocaleString('en-GB');
     const stage = testContact.stage || 'Discovery';
 
@@ -204,7 +199,7 @@ export default function MarketingCampaignDesk({ contacts = [] }: { contacts?: an
                 onChange={(e) => setTestContactId(e.target.value)}
                 className="bg-slate-900 border border-slate-800 text-[11px] text-slate-300 rounded px-2 py-0.5"
               >
-                {(contacts.length > 0 ? contacts : [testContact]).map(c => (
+                {(contacts || []).map(c => (
                   <option key={c.id || c.name} value={c.id || c.name}>
                     {c.name} ({c.company || 'Enterprise'})
                   </option>

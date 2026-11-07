@@ -59,48 +59,7 @@ export default function ProjectBoard({ currentUser }: ProjectBoardProps) {
     }
 
     // Seed defaults if table is empty
-    const seed: TaskItem[] = [
-      {
-        id: 'TSK-101',
-        projectId: 'operations',
-        title: 'Warehouse Rack Safety Audit & Layout Recalibration',
-        assignee: 'Marcus Vance',
-        status: 'Done',
-        startDate: new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0],
-        dueDate: new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0],
-        priority: 'High',
-        progress: 100,
-        dependencies: [],
-        durationDays: 4
-      },
-      {
-        id: 'TSK-102',
-        projectId: 'operations',
-        title: 'BACS Automated Direct Debit Clearing Reconciliation',
-        assignee: 'Sarah Connor',
-        status: 'In Progress',
-        startDate: new Date(Date.now() - 1 * 86400000).toISOString().split('T')[0],
-        dueDate: new Date(Date.now() + 4 * 86400000).toISOString().split('T')[0],
-        priority: 'Critical',
-        progress: 45,
-        dependencies: ['TSK-101'],
-        durationDays: 5
-      },
-      {
-        id: 'TSK-103',
-        projectId: 'marketing',
-        title: 'Q3 Enterprise SaaS Displacement Whitepaper',
-        assignee: 'Elena Rostova',
-        status: 'Backlog',
-        startDate: new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0],
-        dueDate: new Date(Date.now() + 9 * 86400000).toISOString().split('T')[0],
-        priority: 'Medium',
-        progress: 0,
-        dependencies: ['TSK-102'],
-        durationDays: 7
-      }
-    ];
-    setTasks(seed);
+    setTasks([]);
   };
 
   useEffect(() => {
@@ -119,7 +78,7 @@ export default function ProjectBoard({ currentUser }: ProjectBoardProps) {
       id: `TSK-${Date.now().toString(36).toUpperCase()}`,
       projectId: newTaskDept.toLowerCase(),
       title: newTaskTitle.trim(),
-      assignee: newTaskAssignee.trim() || (currentUser?.name || 'Unassigned'),
+      assignee: newTaskAssignee.trim() || (currentUser?.name || (currentUser?.name || '')),
       status: 'Backlog',
       startDate: newTaskStartDate,
       dueDate: newTaskDueDate,

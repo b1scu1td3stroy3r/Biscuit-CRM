@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { db } from '../packages/storage/src/db';
 import { ShoppingCart, ShieldAlert, CheckCircle2, X, FileText, Plus, Trash2 } from 'lucide-react';
 
 interface CPQItem {
@@ -15,16 +16,29 @@ interface CPQItem {
 export default function CPQModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   if (!isOpen) return null;
 
-  const catalog = [
-    { id: 'PROD-SVR', name: 'Biscuit Private Enterprise Appliance', basePrice: 4800, cost: 2200 },
-    { id: 'PROD-SLA', name: '24/7 Mission-Critical SLA Support', basePrice: 1200, cost: 400 },
-    { id: 'PROD-MIG', name: 'Zero-Knowledge Legacy Cloud Data Migration', basePrice: 2500, cost: 900 }
-  ];
+  const [catalog, setCatalog] = useState<{ id: string; name: string; basePrice: number; cost: number }[]>([]);
+  const [items, setItems] = useState<CPQItem[]>([]);
 
-  const [items, setItems] = useState<CPQItem[]>([
-    { id: 'PROD-SVR', name: 'Biscuit Private Enterprise Appliance', basePrice: 4800, cost: 2200, qty: 2, discountPct: 10 },
-    { id: 'PROD-SLA', name: '24/7 Mission-Critical SLA Support', basePrice: 1200, cost: 400, qty: 2, discountPct: 10 }
-  ]);
+  useEffect(() => {
+    async function loadInventory() {
+      try {
+        if ((db as any)?.inventory) {
+          const inv = await (db as any).inventory.toArray();
+          if (inv && inv.length > 0) {
+            setCatalog(inv.map((i: any) => ({
+              id: i.sku || i.id,
+              name: i.name,
+              basePrice: Number(i.sellingPrice || i.unitPrice || 0),
+              cost: Number(i.costPrice || i.purchasePrice || 0)
+            })));
+          }
+        }
+      } catch {
+        setCatalog([]);
+      }
+    }
+    loadInventory();
+  }, []);
 
   const summary = useMemo(() => {
     let subtotal = 0;

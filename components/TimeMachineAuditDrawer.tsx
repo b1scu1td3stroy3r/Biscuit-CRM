@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { db } from '../packages/storage/src/db';
 import { History, RotateCcw, X, Shield, Clock, ArrowRight } from 'lucide-react';
 
 interface AuditEvent {
@@ -17,38 +18,21 @@ interface AuditEvent {
 export default function TimeMachineAuditDrawer({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   if (!isOpen) return null;
 
-  const [events] = useState<AuditEvent[]>([
-    {
-      id: 'EVT-904',
-      entityType: 'Deal',
-      entityId: 'CONT-402',
-      field: 'stage',
-      oldValue: 'Negotiation',
-      newValue: 'Closed Won',
-      author: 'David Wright',
-      timestamp: new Date(Date.now() - 25 * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    },
-    {
-      id: 'EVT-903',
-      entityType: 'Ledger',
-      entityId: 'TX-881',
-      field: 'reconciled',
-      oldValue: 'false',
-      newValue: 'true',
-      author: 'System Auto-Match',
-      timestamp: new Date(Date.now() - 48 * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    },
-    {
-      id: 'EVT-902',
-      entityType: 'Inventory',
-      entityId: 'SKU-001',
-      field: 'onHand',
-      oldValue: '450',
-      newValue: '420',
-      author: 'WMS Outbound Dispatch',
-      timestamp: new Date(Date.now() - 110 * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const [events, setEvents] = useState<AuditEvent[]>([]);
+
+  useEffect(() => {
+    async function loadAuditEvents() {
+      try {
+        if ((db as any)?.auditLogs) {
+          const logs = await (db as any).auditLogs.toArray();
+          setEvents(logs || []);
+        }
+      } catch {
+        setEvents([]);
+      }
     }
-  ]);
+    loadAuditEvents();
+  }, []);
 
   const handleRollback = (ev: AuditEvent) => {
     alert(`Rollback initialized: Restoring ${ev.entityType} ${ev.entityId} field '${ev.field}' back to '${ev.oldValue}'.`);

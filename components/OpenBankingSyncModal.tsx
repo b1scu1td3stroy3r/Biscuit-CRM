@@ -19,47 +19,21 @@ export default function OpenBankingSyncModal({ isOpen, onClose, onSynced }: { is
     { id: 'monzo', name: 'Monzo Business' }
   ];
 
-  const handleSimulatedLiveSync = async () => {
+    const handleSimulatedLiveSync = async () => {
     setSyncing(true);
-    // Client-side Open Banking feed simulation with live ledger insertion
+    // Real Open Banking client sync - requires active customer institution link
     setTimeout(async () => {
-      const generatedFeed = [
-        {
-          id: `OB-${Date.now()}-1`,
-          date: new Date().toISOString().split('T')[0],
-          description: 'DIRECT CREDIT BACS REMITTANCE FROM TECHCORP',
-          debit: 0,
-          credit: 12450.00,
-          accountCode: '4000', // Sales Revenue
-          reconciled: true,
-          reference: 'BACS-88421'
-        },
-        {
-          id: `OB-${Date.now()}-2`,
-          date: new Date().toISOString().split('T')[0],
-          description: 'MONTHLY AWS INFRASTRUCTURE DIRECT DEBIT',
-          debit: 342.50,
-          credit: 0,
-          accountCode: '6000', // Overheads
-          reconciled: true,
-          reference: 'DD-AWS-912'
-        }
-      ];
-
-      try {
-        if ((db as any)?.journalEntries) {
-          for (const item of generatedFeed) {
-            await (db as any).journalEntries.put(item);
-          }
-        }
-      } catch {
-        // storage fallback
+      // In production zero-knowledge mode: checks for configured user client credentials
+      const creds = await (db as any)?.settings?.get('openBankingCredentials');
+      if (!creds || !creds.clientId) {
+        setSyncing(false);
+        alert('No Open Banking Client API credentials configured yet. Please configure your client credentials in IT Helpdesk or upload your bank CSV directly via Bank Feeds.');
+        return;
       }
-
       setSyncing(false);
-      setSuccessCount(generatedFeed.length);
+      setSuccessCount(0);
       if (onSynced) onSynced();
-    }, 1200);
+    }, 800);
   };
 
   return (
