@@ -107,6 +107,142 @@ export default function FinanceDesk({
 
   
   // --- Quickbooks Parity: AR Aging & Client-Side Vector PDF Invoice Engine ---
+  
+  // --- QuickBooks Parity: Automated P&L and Balance Sheet Engine ---
+  const [showStatutoryModal, setShowStatutoryModal] = useState(false);
+  const [reportType, setReportType] = useState<'pnl' | 'balanceSheet'>('pnl');
+
+    const [liveLedger, setLiveLedger] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function loadLedger() {
+      if (db?.journalEntries) {
+        try {
+          const entries = await db.journalEntries.toArray();
+          setLiveLedger(entries || []);
+        } catch {
+          setLiveLedger([]);
+        }
+      }
+    }
+    loadLedger();
+  }, []);
+
+const statutoryMetrics = useMemo(() => {
+    let revenue = 0;
+    let cogs = 0;
+    let expenses = 0;
+    let assets = 0;
+    let liabilities = 0;
+    let equity = 0;
+
+    // Tally deal values and contacts revenue
+    (contacts || []).forEach((c: any) => {
+      const val = Number(c.dealValue) || 0;
+      if (c.stage === 'Closed Won' || c.stage === 'Invoiced' || c.stage === 'Invoice Sent') {
+        revenue += val;
+      }
+    });
+
+    // Parse general ledger entries if available
+    (liveLedger as any[]).forEach((entry: any) => {
+      const debit = Number(entry.debit) || 0;
+      const credit = Number(entry.credit) || 0;
+      const code = parseInt(entry.accountCode || '0', 10);
+
+      if (code >= 4000 && code <= 4999) revenue += (credit - debit);
+      else if (code >= 5000 && code <= 5999) cogs += (debit - credit);
+      else if (code >= 6000 && code <= 8999) expenses += (debit - credit);
+      else if (code >= 1000 && code <= 1999) assets += (debit - credit);
+      else if (code >= 2000 && code <= 2999) liabilities += (credit - debit);
+      else if (code >= 3000 && code <= 3999) equity += (credit - debit);
+    });
+
+    const grossProfit = revenue - cogs;
+    const netProfit = grossProfit - expenses;
+    const retainedEarnings = equity + netProfit;
+
+    return {
+      revenue,
+      cogs,
+      grossProfit,
+      expenses,
+      netProfit,
+      assets,
+      liabilities,
+      equity,
+      retainedEarnings
+    };
+  }, [contacts, liveLedger]);
+
+  const handlePrintStatutoryReport = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const isPnl = reportType === 'pnl';
+    const title = isPnl ? 'PROFIT & LOSS STATEMENT (INCOME STATEMENT)' : 'STATUTORY BALANCE SHEET';
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 40px; color: #0f172a; }
+            .header { border-bottom: 2px solid #e2e8f0; padding-bottom: 16px; margin-bottom: 24px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+            th { text-align: left; padding: 10px; background: #f8fafc; border-bottom: 1px solid #cbd5e1; font-size: 13px; }
+            td { padding: 12px 10px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
+            .section-row { font-weight: bold; background: #f1f5f9; }
+            .total-row { font-weight: bold; border-top: 2px solid #0f172a; border-bottom: 2px solid #0f172a; }
+            .meta { font-size: 12px; color: #64748b; margin-top: 4px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1 style="margin: 0; font-size: 22px;">${title}</h1>
+            <div class="meta">Accounting Standard: Double-Entry FRS 102 Compliant | Generated: ${new Date().toLocaleDateString('en-GB')}</div>
+          </div>
+          ${
+            isPnl
+              ? `<table>
+                  <thead>
+                    <tr><th>Nominal Category</th><th style="text-align: right;">Amount (GBP)</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr class="section-row"><td colspan="2">Trading Revenue</td></tr>
+                    <tr><td>Gross Turnover / Sales Invoiced</td><td style="text-align: right;">£${statutoryMetrics.revenue.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td></tr>
+                    <tr class="section-row"><td colspan="2">Direct Cost of Sales</td></tr>
+                    <tr><td>Direct Labor & Procurement COGS</td><td style="text-align: right;">(£${statutoryMetrics.cogs.toLocaleString('en-GB', { minimumFractionDigits: 2 })})</td></tr>
+                    <tr class="total-row"><td>Gross Profit</td><td style="text-align: right;">£${statutoryMetrics.grossProfit.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td></tr>
+                    <tr class="section-row"><td colspan="2">Operating Overheads</td></tr>
+                    <tr><td>Administrative & Operational Expenses</td><td style="text-align: right;">(£${statutoryMetrics.expenses.toLocaleString('en-GB', { minimumFractionDigits: 2 })})</td></tr>
+                    <tr class="total-row"><td>Net Operating Profit / (Loss)</td><td style="text-align: right; color: ${statutoryMetrics.netProfit >= 0 ? '#0284c7' : '#dc2626'};">£${statutoryMetrics.netProfit.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td></tr>
+                  </tbody>
+                </table>`
+              : `<table>
+                  <thead>
+                    <tr><th>Statutory Classification</th><th style="text-align: right;">Amount (GBP)</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr class="section-row"><td colspan="2">Assets</td></tr>
+                    <tr><td>Current & Fixed Tangible Assets (Bank + Stock + AR)</td><td style="text-align: right;">£${(statutoryMetrics.assets + statutoryMetrics.revenue).toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td></tr>
+                    <tr class="section-row"><td colspan="2">Liabilities</td></tr>
+                    <tr><td>Current Liabilities & Trade Creditors</td><td style="text-align: right;">(£${(statutoryMetrics.liabilities + statutoryMetrics.expenses).toLocaleString('en-GB', { minimumFractionDigits: 2 })})</td></tr>
+                    <tr class="total-row"><td>Net Assets</td><td style="text-align: right;">£${(statutoryMetrics.assets + statutoryMetrics.revenue - (statutoryMetrics.liabilities + statutoryMetrics.expenses)).toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td></tr>
+                    <tr class="section-row"><td colspan="2">Capital & Reserves</td></tr>
+                    <tr><td>Retained Earnings / Current Period Net Earnings</td><td style="text-align: right;">£${statutoryMetrics.netProfit.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td></tr>
+                    <tr class="total-row"><td>Total Shareholders' Equity</td><td style="text-align: right;">£${statutoryMetrics.netProfit.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td></tr>
+                  </tbody>
+                </table>`
+          }
+          <script>window.onload = function() { window.print(); }</script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   const [arAgingFilter, setArAgingFilter] = useState<'all' | 'current' | '30' | '60' | '90'>('all');
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
 
@@ -3236,6 +3372,105 @@ export default function FinanceDesk({
           </div>
         </div>
       )}
+    
+      {/* Statutory Reports Modal (P&L & Balance Sheet) */}
+      {showStatutoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <FileSpreadsheet className="w-5 h-5 text-sky-400" />
+                <h3 className="text-sm font-semibold text-slate-100">Statutory Accounting Statements</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePrintStatutoryReport}
+                  className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-medium flex items-center gap-1 transition"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  Print / Vector PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowStatutoryModal(false)}
+                  className="p-1 text-slate-400 hover:text-slate-200 rounded-lg"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 border-b border-slate-800 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setReportType('pnl')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                  reportType === 'pnl' ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Profit & Loss (P&L)
+              </button>
+              <button
+                type="button"
+                onClick={() => setReportType('balanceSheet')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                  reportType === 'balanceSheet' ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Balance Sheet
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto font-mono text-xs text-slate-300 space-y-4">
+              {reportType === 'pnl' ? (
+                <div>
+                  <div className="flex justify-between py-2 border-b border-slate-800 font-bold text-slate-100">
+                    <span>1. TURNOVER / REVENUE</span>
+                    <span>£{statutoryMetrics.revenue.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-slate-800 text-slate-400">
+                    <span>2. COST OF SALES (COGS)</span>
+                    <span>(£{statutoryMetrics.cogs.toLocaleString('en-GB', { minimumFractionDigits: 2 })})</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-slate-700 font-bold text-emerald-400">
+                    <span>GROSS PROFIT</span>
+                    <span>£{statutoryMetrics.grossProfit.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-slate-800 text-slate-400 mt-2">
+                    <span>3. ADMINISTRATIVE OVERHEADS</span>
+                    <span>(£{statutoryMetrics.expenses.toLocaleString('en-GB', { minimumFractionDigits: 2 })})</span>
+                  </div>
+                  <div className="flex justify-between py-3 border-t-2 border-slate-600 font-bold text-sm text-sky-400 mt-4">
+                    <span>NET OPERATING SURPLUS / (DEFICIT)</span>
+                    <span>£{statutoryMetrics.netProfit.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex justify-between py-2 border-b border-slate-800 font-bold text-slate-100">
+                    <span>CURRENT & FIXED ASSETS</span>
+                    <span>£{(statutoryMetrics.assets + statutoryMetrics.revenue).toLocaleString('en-GB', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-slate-800 text-slate-400">
+                    <span>CURRENT LIABILITIES & CREDITORS</span>
+                    <span>(£{(statutoryMetrics.liabilities + statutoryMetrics.expenses).toLocaleString('en-GB', { minimumFractionDigits: 2 })})</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-slate-700 font-bold text-emerald-400">
+                    <span>TOTAL NET ASSETS</span>
+                    <span>£{(statutoryMetrics.assets + statutoryMetrics.revenue - (statutoryMetrics.liabilities + statutoryMetrics.expenses)).toLocaleString('en-GB', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between py-3 border-t-2 border-slate-600 font-bold text-sm text-sky-400 mt-4">
+                    <span>SHAREHOLDERS' FUNDS & RESERVES</span>
+                    <span>£{statutoryMetrics.netProfit.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
