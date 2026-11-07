@@ -58,6 +58,8 @@ import HMRCComplianceBridgeModal from '../components/HMRCComplianceBridgeModal';
 import EnterpriseSSOModal from '../components/EnterpriseSSOModal';
 import SecurityThreatAuditModal from '../components/SecurityThreatAuditModal';
 import EnterpriseCompliancePackModal from '../components/EnterpriseCompliancePackModal';
+import BackgroundJobWorkerModal from '../components/BackgroundJobWorkerModal';
+import EnterpriseAppConnectorModal from '../components/EnterpriseAppConnectorModal';
 import SAPBOMDesk from '../components/SAPBOMDesk';
 import WorkdayHeadcountDesk from '../components/WorkdayHeadcountDesk';
 import IndustrySetupWizardModal from '../components/IndustrySetupWizardModal';
@@ -249,6 +251,9 @@ export default function Dashboard() {
   const [showSSOModal, setShowSSOModal] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
   const [showComplianceModal, setShowComplianceModal] = useState(false);
+  const [showComputeWorkerModal, setShowComputeWorkerModal] = useState(false);
+  const [showConnectorsModal, setShowConnectorsModal] = useState(false);
+
 
 
 
@@ -2378,6 +2383,9 @@ export default function Dashboard() {
       <EnterpriseSSOModal isOpen={showSSOModal} onClose={() => setShowSSOModal(false)} />
       <SecurityThreatAuditModal isOpen={showSecurityModal} onClose={() => setShowSecurityModal(false)} />
       <EnterpriseCompliancePackModal isOpen={showComplianceModal} onClose={() => setShowComplianceModal(false)} />
+      <BackgroundJobWorkerModal isOpen={showComputeWorkerModal} onClose={() => setShowComputeWorkerModal(false)} />
+      <EnterpriseAppConnectorModal isOpen={showConnectorsModal} onClose={() => setShowConnectorsModal(false)} />
+
 
     </main>
   );
