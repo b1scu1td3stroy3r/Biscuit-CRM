@@ -89,6 +89,34 @@ export default function FinanceDesk({
     sortCode: '',
     accountNumber: ''
   });
+    useEffect(() => {
+    async function loadSavedBank() {
+      if (db?.settings) {
+        const saved: any = await db.settings.get('operatingBank');
+        if (saved) {
+          setOperatingBank({
+            bankName: saved.bankName || '',
+            sortCode: saved.sortCode || '',
+            accountNumber: saved.accountNumber || ''
+          });
+        }
+      }
+    }
+    loadSavedBank();
+  }, []);
+
+  const handleSaveOperatingBank = async () => {
+    if (db?.settings) {
+      await db.settings.put({
+        id: 'operatingBank',
+        bankName: operatingBank.bankName,
+        sortCode: operatingBank.sortCode,
+        accountNumber: operatingBank.accountNumber,
+        updatedAt: new Date().toISOString()
+      } as any);
+      alert('Operating bank credentials saved successfully.');
+    }
+  };
 
   // Navigation & View Filters
     // Zero-Knowledge Bank Feed & Reconciliation State
@@ -180,9 +208,18 @@ export default function FinanceDesk({
     ? currentUser 
     : (currentUser as any)?.role || (currentUser as any)?.name || '';
 
-  const canEditTax = userRoleStr === 'Managing Director' || 
-    userRoleStr.toLowerCase().includes('finance') || 
-    (typeof currentUser === 'object' && (currentUser as any)?.department === 'Finance');
+  const userRoleRaw = (
+    typeof currentUser === 'string' ? currentUser :
+    (currentUser as any)?.role || (currentUser as any)?.name || ''
+  ).toLowerCase();
+
+  const canEditTax = Boolean(
+    userRoleRaw.includes('director') ||
+    userRoleRaw.includes('md') ||
+    userRoleRaw.includes('finance') ||
+    (currentUser as any)?.department === 'Finance' ||
+    (currentUser as any)?.department === 'Executive'
+  );
 
   const handleSaveHmrcSettings = (updates: Partial<typeof hmrcSettings>) => {
     const next = { ...hmrcSettings, ...updates };
@@ -868,6 +905,11 @@ export default function FinanceDesk({
               <Building2 className="w-4 h-4 text-emerald-400" />
               Corporate Operating Bank Account (BACS / Direct Routing)
             </h4>
+            {canEditTax && (
+              <button type="button" onClick={handleSaveOperatingBank} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-medium transition">
+                Save Credentials
+              </button>
+            )}
             {!canEditTax && (
               <span className="text-[10px] text-amber-400 flex items-center gap-1 font-mono">
                 Finance &amp; Director View Only
