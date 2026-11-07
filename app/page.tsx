@@ -48,6 +48,10 @@ import FinanceDesk from '../components/FinanceDesk';
 import ProjectBoard from '../components/ProjectBoard';
 import MarketingCampaignDesk from '../components/MarketingCampaignDesk';
 import IndustrySetupWizardModal from '../components/IndustrySetupWizardModal';
+import CPQModal from '../components/CPQModal';
+import OpenBankingSyncModal from '../components/OpenBankingSyncModal';
+import TimeMachineAuditDrawer from '../components/TimeMachineAuditDrawer';
+import BiscuitAICopilotDrawer from '../components/BiscuitAICopilotDrawer';
 import OrgRosterDesk from '../components/OrgRosterDesk';
 import TelephonyDesk from '../components/TelephonyDesk';
 import MailchimpDesk from '../components/MailchimpDesk';
@@ -220,6 +224,11 @@ const stageMatchesCol = (cStage: string, colId: string | number) => {
 
 export default function Dashboard() {
   const [showIndustryWizard, setShowIndustryWizard] = useState(false);
+  const [showCPQModal, setShowCPQModal] = useState(false);
+  const [showOpenBankingModal, setShowOpenBankingModal] = useState(false);
+  const [showAuditDrawer, setShowAuditDrawer] = useState(false);
+  const [showAICopilotDrawer, setShowAICopilotDrawer] = useState(false);
+
   const handleQualifyMarketingLead = async (leadData: { name: string; company: string; email: string; phone?: string; dealValue?: number }) => {
     const assignedAcc = `ACC-${Math.floor(10000 + Math.random() * 90000)}`;
     await db.contacts.add({
@@ -2332,6 +2341,11 @@ export default function Dashboard() {
           console.log('Applied profile:', profile);
         }}
       />
+
+          <CPQModal isOpen={showCPQModal} onClose={() => setShowCPQModal(false)} />
+      <OpenBankingSyncModal isOpen={showOpenBankingModal} onClose={() => setShowOpenBankingModal(false)} />
+      <TimeMachineAuditDrawer isOpen={showAuditDrawer} onClose={() => setShowAuditDrawer(false)} />
+      <BiscuitAICopilotDrawer isOpen={showAICopilotDrawer} onClose={() => setShowAICopilotDrawer(false)} />
 
     </main>
   );
