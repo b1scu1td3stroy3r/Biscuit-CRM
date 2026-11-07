@@ -281,7 +281,7 @@ export interface Contact {
   secondaryAssigneeIds?: number[];   // Matrix co-management
   billingAddress?: string;
   shippingAddress?: string;
-  stage: 'Prospect' | 'Lead' | 'Sales' | 'Procurement' | 'Logistics' | 'Customer Service' | 'Winback';
+  stage: 'Prospect' | 'Lead' | 'Callback' | 'Sales' | 'Procurement' | 'Logistics' | 'Customer Service' | 'Winback';
   dealValue?: number;
   invoiceStatus?: 'Draft' | 'Sent' | 'Issued' | 'Paid' | 'Overdue';
   invoiceNumber?: string;
