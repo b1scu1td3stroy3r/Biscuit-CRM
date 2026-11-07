@@ -54,6 +54,8 @@ import AutoSnapshotEngine from '../components/AutoSnapshotEngine';
 import UniversalCSVOnboardingModal from '../components/UniversalCSVOnboardingModal';
 import SyncDiagnosticsModal from '../components/SyncDiagnosticsModal';
 import EnterpriseFleetHubModal from '../components/EnterpriseFleetHubModal';
+import HMRCComplianceBridgeModal from '../components/HMRCComplianceBridgeModal';
+import EnterpriseSSOModal from '../components/EnterpriseSSOModal';
 import SAPBOMDesk from '../components/SAPBOMDesk';
 import WorkdayHeadcountDesk from '../components/WorkdayHeadcountDesk';
 import IndustrySetupWizardModal from '../components/IndustrySetupWizardModal';
@@ -241,6 +243,9 @@ export default function Dashboard() {
   const [showCSVModal, setShowCSVModal] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [showFleetModal, setShowFleetModal] = useState(false);
+  const [showHMRCModal, setShowHMRCModal] = useState(false);
+  const [showSSOModal, setShowSSOModal] = useState(false);
+
 
 
   const handleQualifyMarketingLead = async (leadData: { name: string; company: string; email: string; phone?: string; dealValue?: number }) => {
@@ -2365,6 +2370,9 @@ export default function Dashboard() {
           <UniversalCSVOnboardingModal isOpen={showCSVModal} onClose={() => setShowCSVModal(false)} />
       <SyncDiagnosticsModal isOpen={showSyncModal} onClose={() => setShowSyncModal(false)} />
       <EnterpriseFleetHubModal isOpen={showFleetModal} onClose={() => setShowFleetModal(false)} />
+      <HMRCComplianceBridgeModal isOpen={showHMRCModal} onClose={() => setShowHMRCModal(false)} />
+      <EnterpriseSSOModal isOpen={showSSOModal} onClose={() => setShowSSOModal(false)} />
+
     </main>
   );
 }
