@@ -1,4 +1,30 @@
 
+export interface ProjectRecord {
+  id: string;
+  name: string;
+  department: string;
+  status: 'Planning' | 'In Progress' | 'On Hold' | 'Completed';
+  startDate: string;
+  targetDate: string;
+  owner: string;
+  priority: 'Low' | 'Medium' | 'High' | 'Critical';
+  budget?: number;
+  createdAt: string;
+}
+
+export interface TaskRecord {
+  id: string;
+  projectId: string;
+  title: string;
+  assignee: string;
+  status: 'Backlog' | 'In Progress' | 'Review' | 'Done';
+  dueDate: string;
+  priority: 'Low' | 'Medium' | 'High' | 'Critical';
+  progress: number;
+  createdAt: string;
+}
+
+
 export interface InventoryItem {
   id?: number;
   sku: string;
@@ -431,6 +457,20 @@ export class BiscuitDB extends Dexie {
       callLogs: '++id, contactId, phoneNumber, callerName, timestamp',
       whiteboardNotes: '++id, author, department, createdAt',
       settings: 'key, updatedAt'
+    });
+    this.version(5).stores({
+      contacts: '++id, accountNumber, email, stage, synced, updatedAt, ownerId',
+      templates: '++id, category, title',
+      auditLogs: '++id, timestamp, actor, action, synced',
+      employees: '++id, name, department, status, role, clearanceLevel, primaryManagerId',
+      outbox: '++id, type, table, timestamp',
+      newsFeed: '++id, category, department, createdAt',
+      leaveRequests: '++id, employeeName, department, status, startDate',
+      holidays: '++id, employeeName, department, status, startDate',
+      callLogs: '++id, contactId, phoneNumber, callerName, timestamp',
+      whiteboardNotes: '++id, author, department, createdAt',
+      settings: 'key, updatedAt',
+      tasks: 'id, projectId, status, assignee, dueDate'
     });
 
     this.version(5).stores({

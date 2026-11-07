@@ -45,6 +45,7 @@ import HealthWizard from '../components/HealthWizard';
 import DealDetailDrawer from '../components/DealDetailDrawer';
 import EmployeeHub, { computeProgression } from '../components/EmployeeHub';
 import FinanceDesk from '../components/FinanceDesk';
+import ProjectBoard from '../components/ProjectBoard';
 import OrgRosterDesk from '../components/OrgRosterDesk';
 import TelephonyDesk from '../components/TelephonyDesk';
 import MailchimpDesk from '../components/MailchimpDesk';
