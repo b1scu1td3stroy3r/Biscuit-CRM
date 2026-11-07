@@ -46,6 +46,8 @@ import DealDetailDrawer from '../components/DealDetailDrawer';
 import EmployeeHub, { computeProgression } from '../components/EmployeeHub';
 import FinanceDesk from '../components/FinanceDesk';
 import ProjectBoard from '../components/ProjectBoard';
+import MarketingCampaignDesk from '../components/MarketingCampaignDesk';
+import IndustrySetupWizardModal from '../components/IndustrySetupWizardModal';
 import OrgRosterDesk from '../components/OrgRosterDesk';
 import TelephonyDesk from '../components/TelephonyDesk';
 import MailchimpDesk from '../components/MailchimpDesk';
@@ -217,6 +219,7 @@ const stageMatchesCol = (cStage: string, colId: string | number) => {
 };
 
 export default function Dashboard() {
+  const [showIndustryWizard, setShowIndustryWizard] = useState(false);
   const handleQualifyMarketingLead = async (leadData: { name: string; company: string; email: string; phone?: string; dealValue?: number }) => {
     const assignedAcc = `ACC-${Math.floor(10000 + Math.random() * 90000)}`;
     await db.contacts.add({
@@ -2322,6 +2325,14 @@ export default function Dashboard() {
         onClose={() => setIsHealthOpen(false)}
         folderId={folderId}
       />
+          <IndustrySetupWizardModal
+        isOpen={showIndustryWizard}
+        onClose={() => setShowIndustryWizard(false)}
+        onApplyProfile={(profile) => {
+          console.log('Applied profile:', profile);
+        }}
+      />
+
     </main>
   );
 }
