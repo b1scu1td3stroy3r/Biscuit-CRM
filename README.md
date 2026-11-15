@@ -1,5 +1,5 @@
 # 🍪 Biscuit CRM
-**The Open-Source, Zero-Storage Business Operating System.**  
+**The Open-Source, Zero-Storage Business Operating System.**
 *Run Sales, Ops, HR, Projects, and Comms with zero central databases. 100% of your data stays in your company's Google Workspace.*
 
 ---
@@ -19,7 +19,7 @@
 
 ## 🚀 Key Modules Included
 
-1. **Cross-Department Pipeline State Machine:** Seamless handoffs from Lead → Sales → Procurement → Logistics → Customer Service with persistent Account Manager 360° radar.
+1. **Cross-Department Pipeline State Machine:** Seamless handoffs from Lead -> Sales -> Procurement -> Logistics -> Customer Service with persistent Account Manager 360° radar.
 2. **Interactive Social Feed:** Automated company-wide celebrations when staff level up, with emoji reactions, comments, and pinned leadership announcements.
 3. **Interactive Gantt & Projects:** Reschedule tasks by dragging; automatically generates and adjusts Google Calendar milestone events.
 4. **Standardized Template Vault:** One-click sales scripts, objection battlecards, and marketing cadences with automated variable substitution.
@@ -33,10 +33,10 @@
 
 ---
 
-## 🛠️ Quick Setup Guide
+## 🛠️ Local Development & Deployment
 
-### 1. Clone & Install
-```bash
-git clone [https://github.com/b1scu1td3stroy3r/biscuit-crm.git](https://github.com/b1scu1td3stroy3r/biscuit-crm.git)
-cd biscuit-crm
-npm install
+1. **Clone and Install:**
+   ```bash
+   git clone [https://github.com/b1scu1td3stroy3r/Biscuit-CRM.git](https://github.com/b1scu1td3stroy3r/Biscuit-CRM.git)
+   cd biscuit-crm
+   npm install
